@@ -1,0 +1,135 @@
+project_id = "chaeznzfvbgrpzvxwvyu"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://chaeznzfvbgrpzvxwvyu.supabase.co"]
+
+[functions.create-agent-indexes]
+verify_jwt = true
+
+[functions.process-documents]
+verify_jwt = true
+
+[functions.chat-with-agent]
+verify_jwt = true
+
+[functions.intent-analyzer]
+verify_jwt = true
+
+[functions.openai-image-generation]
+verify_jwt = true
+
+[functions.openai-web-research]
+verify_jwt = true
+
+[functions.agent-tools-executor]
+verify_jwt = true
+
+[functions.gsuite-agent-tools]
+verify_jwt = true
+
+[functions.enhanced-chat-with-gsuite]
+verify_jwt = true
+
+[functions.gmail-list-messages]
+verify_jwt = true
+
+[functions.drive-list-files]
+verify_jwt = true
+
+[functions.docs-read-content]
+verify_jwt = true
+
+[functions.sheets-read-data]
+verify_jwt = true
+
+[functions.parse-document]
+verify_jwt = true
+
+[functions.chat-with-agent-channel]
+verify_jwt = true
+
+[functions.generate-rich-content]
+verify_jwt = true
+
+[functions.get-hubspot-client-id]
+verify_jwt = false
+
+[functions.hubspot-oauth-callback]
+verify_jwt = true
+
+[functions.hubspot-refresh-token]
+verify_jwt = true
+
+[functions.hubspot-contacts-search]
+verify_jwt = true
+
+[functions.hubspot-contacts-create]
+verify_jwt = true
+
+[functions.hubspot-contacts-update]
+verify_jwt = true
+
+[functions.hubspot-companies-search]
+verify_jwt = true
+
+[functions.hubspot-companies-create]
+verify_jwt = true
+
+[functions.hubspot-deals-search]
+verify_jwt = true
+
+[functions.hubspot-deals-create]
+verify_jwt = true
+
+[functions.hubspot-deals-update]
+verify_jwt = true
+
+[functions.hubspot-tickets-search]
+verify_jwt = true
+
+[functions.hubspot-tickets-create]
+verify_jwt = true
+
+[functions.hubspot-agent-tools]
+verify_jwt = true
+
+[functions.enhanced-chat-with-hubspot]
+verify_jwt = true
+
+[functions.notification-processor]
+verify_jwt = true
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.ai-provider-service]
+verify_jwt = true

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backfill Agent OpenAI Configuration</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .output {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .warning {
+            color: #ffc107;
+        }
+        .info {
+            color: #17a2b8;
+        }
+        .instructions {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Backfill Agent OpenAI Configuration</h1>
+        
+        <div class="instructions">
+            <h3>📋 Instructions:</h3>
+            <ol>
+                <li>Get your Supabase service role key from your dashboard (Settings → API → service_role key)</li>
+                <li>Enter the key below (it's safe to use in this local page)</li>
+                <li>Click "Check Agents" to see what needs fixing</li>
+                <li>Click "Run Backfill" to fix the agents</li>
+            </ol>
+        </div>
+
+        <div class="form-group">
+            <label for="serviceKey">Supabase Service Role Key:</label>
+            <input type="password" id="serviceKey" placeholder="Enter your service role key here...">
+        </div>
+
+        <div class="form-group">
+            <label for="limit">Batch Size:</label>
+            <input type="number" id="limit" value="5" min="1" max="20">
+        </div>
+
+        <button onclick="checkAgents()" id="checkBtn">Check Agents Status</button>
+        <button onclick="runDryRun()" id="dryRunBtn">Dry Run Backfill</button>
+        <button onclick="runBackfill()" id="backfillBtn">Run Backfill</button>
+        <button onclick="clearOutput()">Clear Output</button>
+
+        <div id="output" class="output">Ready to check agents...\n</div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://chaeznzfvbgrpzvxwvyu.supabase.co';
+        let output = document.getElementById('output');
+        let checkBtn = document.getElementById('checkBtn');
+        let dryRunBtn = document.getElementById('dryRunBtn');
+        let backfillBtn = document.getElementById('backfillBtn');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutput() {
+            output.innerHTML = '';
+        }
+
+        function setButtonsEnabled(enabled) {
+            checkBtn.disabled = !enabled;
+            dryRunBtn.disabled = !enabled;
+            backfillBtn.disabled = !enabled;
+        }
+
+        async function makeRequest(endpoint, body) {
+            const serviceKey = document.getElementById('serviceKey').value.trim();
+            if (!serviceKey) {
+                log('❌ Please enter your Supabase service role key', 'error');
+                return null;
+            }
+
+            try {
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${serviceKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                const result = await response.json();
+                return { response, result };
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function checkAgents() {
+            log('🔍 Checking agent configuration status...', 'info');
+            setButtonsEnabled(false);
+
+            try {
+                // Check template agents
+                log('📋 Checking template agents...', 'info');
+                const templateResult = await makeRequest('backfill-agent-openai', { dry_run: true, limit: 0 });
+                
+                if (templateResult) {
+                    const { result } = templateResult;
+                    if (result.success) {
+                        log(`✅ Template agents check: ${result.message}`, 'success');
+                    } else {
+                        log(`❌ Template agents check failed: ${result.error}`, 'error');
+                    }
+                }
+
+                // Check company agents
+                log('🏢 Checking company agents...', 'info');
+                const limit = parseInt(document.getElementById('limit').value) || 5;
+                const companyResult = await makeRequest('backfill-agent-openai', { dry_run: true, limit });
+
+                if (companyResult) {
+                    const { result } = companyResult;
+                    if (result.success) {
+                        const data = result.data;
+                        log(`📊 Found ${data.processed} agents that need OpenAI configuration`, 'info');
+                        
+                        if (data.processed === 0) {
+                            log('🎉 All agents are properly configured!', 'success');
+                        } else {
+                            log(`   • ${data.successful} would succeed`, 'success');
+                            log(`   • ${data.failed} would fail`, 'error');
+                            if (data.errors && data.errors.length > 0) {
+                                log('   • Errors:', 'error');
+                                data.errors.forEach(error => log(`     - ${error}`, 'error'));
+                            }
+                        }
+                    } else {
+                        log(`❌ Company agents check failed: ${result.error}`, 'error');
+                    }
+                }
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                setButtonsEnabled(true);
+            }
+        }
+
+        async function runDryRun() {
+            log('🧪 Running dry run backfill...', 'info');
+            setButtonsEnabled(false);
+
+            try {
+                const limit = parseInt(document.getElementById('limit').value) || 5;
+                const result = await makeRequest('backfill-agent-openai', { dry_run: true, limit });
+
+                if (result) {
+                    const { result: data } = result;
+                    if (data.success) {
+                        log(`✅ Dry run completed: ${data.message}`, 'success');
+                        log(JSON.stringify(data.data, null, 2), 'info');
+                    } else {
+                        log(`❌ Dry run failed: ${data.error}`, 'error');
+                    }
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                setButtonsEnabled(true);
+            }
+        }
+
+        async function runBackfill() {
+            log('🚀 Running actual backfill...', 'info');
+            setButtonsEnabled(false);
+
+            try {
+                const limit = parseInt(document.getElementById('limit').value) || 5;
+                const result = await makeRequest('backfill-agent-openai', { dry_run: false, limit });
+
+                if (result) {
+                    const { result: data } = result;
+                    if (data.success) {
+                        log(`✅ Backfill completed: ${data.message}`, 'success');
+                        log(JSON.stringify(data.data, null, 2), 'info');
+                        
+                        if (data.data.successful > 0) {
+                            log(`🎉 Successfully configured ${data.data.successful} agents!`, 'success');
+                            log('💡 You can now test document upload in your application.', 'info');
+                        }
+                        
+                        if (data.data.failed > 0) {
+                            log(`⚠️ ${data.data.failed} agents failed to configure`, 'warning');
+                            if (data.data.errors) {
+                                data.data.errors.forEach(error => log(`   - ${error}`, 'error'));
+                            }
+                        }
+                    } else {
+                        log(`❌ Backfill failed: ${data.error}`, 'error');
+                    }
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                setButtonsEnabled(true);
+            }
+        }
+
+        // Auto-focus the service key input
+        document.getElementById('serviceKey').focus();
+    </script>
+</body>
+</html>

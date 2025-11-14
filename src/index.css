@@ -1,0 +1,571 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar styles for sidebar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219);
+  border-radius: 0.375rem;
+}
+
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Aurora Gradient Design System */
+    /* Colors */
+    --bg: 188 19% 95%; /* #ECF2F3 */
+    --ink: 217 21% 11%; /* #1a1c1f */
+    --ink-dim: 207 18% 49%; /* #627584 */
+    --muted: 215 14% 69%; /* #A3A9B5 */
+    --primary: 195 88% 73%; /* #78D2F6 cyan glow */
+    --secondary: 243 78% 81%; /* #A2A4F8 violet glow */
+    --periwinkle: 214 38% 80%; /* #BCD1EC light accent */
+    --lavender: 275 32% 87%; /* #E1DDE9 section tint */
+    --elev: 0 0% 100% / 0.55; /* frosted surface */
+    --border: 212 31% 14% / 0.08; /* rgba(16,22,26,.08) */
+    --black: 223 24% 8%; /* #0f1115 CTA/labels */
+
+    /* Legacy mappings for compatibility */
+    --background: var(--bg);
+    --foreground: var(--ink);
+    --card: var(--elev);
+    --card-foreground: var(--ink);
+    --popover: var(--elev);
+    --popover-foreground: var(--ink);
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 195 88% 68%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: var(--periwinkle);
+    --accent-foreground: var(--ink);
+    --muted-foreground: var(--ink-dim);
+    --destructive: 0 85% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --input: var(--elev);
+    --ring: var(--primary);
+    --surface-elevated: var(--elev);
+    --text-secondary: var(--ink-dim);
+
+    /* Typography */
+    --font-display: "Sora", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+    
+    /* Radii & shadows */
+    --radius-sm: 12px;
+    --radius: 20px;
+    --radius-pill: 5px; /* Changed from 9999px to 5px */
+    --shadow-soft: 0 10px 30px rgba(15,17,21,.10);
+    --shadow-glow: 0 0 80px rgba(120,210,246,.30), 0 0 80px rgba(162,164,248,.28);
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
+    --gradient-hero: linear-gradient(180deg, rgba(225,221,233,.55), transparent 40%);
+    --gradient-background: radial-gradient(600px at 18% 8%, #9fe7ff 0, transparent 60%), radial-gradient(700px at 82% 16%, #b7b1ff 0, transparent 60%), radial-gradient(600px at 28% 58%, #e8e2f6 0, transparent 60%), hsl(var(--bg));
+    
+    /* Legacy shadows */
+    --shadow-sm: var(--shadow-soft);
+    --shadow-md: 0 4px 12px rgba(15,17,21,.12);
+    --shadow-lg: 0 8px 32px rgba(15,17,21,.16);
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    /* Dark mode variants for aurora theme */
+    --bg: 223 24% 8%;
+    --ink: 220 10% 95%;
+    --ink-dim: 220 8% 65%;
+    --muted: 220 8% 46%;
+    --elev: 220 27% 12% / 0.8;
+    --border: 220 20% 20% / 0.3;
+    
+    --background: var(--bg);
+    --foreground: var(--ink);
+    --card: var(--elev);
+    --card-foreground: var(--ink);
+    --popover: var(--elev);
+    --popover-foreground: var(--ink);
+    --primary-foreground: var(--bg);
+    --primary-hover: 195 88% 63%;
+    --secondary-foreground: var(--bg);
+    --accent-foreground: var(--ink);
+    --muted-foreground: var(--ink-dim);
+    --destructive: 0 85% 65%;
+    --destructive-foreground: var(--bg);
+    --success: 142 71% 50%;
+    --success-foreground: var(--bg);
+    --input: var(--elev);
+    --ring: var(--primary);
+    --surface-elevated: var(--elev);
+    --text-secondary: var(--ink-dim);
+    
+    --gradient-background: radial-gradient(600px at 18% 8%, rgba(159,231,255,.15) 0, transparent 60%), radial-gradient(700px at 82% 16%, rgba(183,177,255,.15) 0, transparent 60%), radial-gradient(600px at 28% 58%, rgba(232,226,246,.15) 0, transparent 60%), hsl(var(--bg));
+    --shadow-glow: 0 0 80px rgba(120,210,246,.20), 0 0 80px rgba(162,164,248,.18);
+    
+    /* Sidebar vars for compatibility */
+    --sidebar-background: var(--bg);
+    --sidebar-foreground: var(--ink);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--bg);
+    --sidebar-accent: var(--elev);
+    --sidebar-accent-foreground: var(--ink);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--primary);
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    font-family: var(--font-body);
+    color: hsl(var(--ink));
+    background: var(--gradient-background);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Typography */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  h1 { font-size: clamp(38px, 5vw, 48px); font-weight: 800; }
+  h2 { font-size: clamp(28px, 4vw, 36px); }
+  h3 { font-size: clamp(20px, 3vw, 24px); }
+
+  .kicker {
+    font: 600 12px/1 var(--font-body);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--ink-dim));
+  }
+
+  /* Lists */
+  ul {
+    list-style: disc;
+    padding-left: 1.2rem;
+  }
+  ul li {
+    color: hsl(var(--ink-dim));
+    margin: 0.35rem 0;
+  }
+}
+
+@layer components {
+  /* Aurora Cards */
+  .card {
+    background: hsl(var(--elev));
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.65);
+    box-shadow: var(--shadow-soft);
+    border-radius: var(--radius);
+  }
+
+  .card-elevated {
+    @apply card;
+  }
+
+  .glass-effect {
+    @apply card;
+  }
+
+  /* Aurora Buttons */
+  .btn {
+    border-radius: var(--radius-pill);
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    transition: all 150ms ease;
+  }
+
+  .btn-primary, .btn-hero {
+    background: hsl(var(--black));
+    color: #fff;
+    border: 1px solid hsl(var(--black));
+  }
+  .btn-primary:hover, .btn-hero:hover {
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .btn-ghost {
+    background: hsl(var(--ink) / 0.0);
+    color: hsl(var(--ink));
+    border: none;
+  }
+  .btn-ghost:hover {
+    background: hsl(var(--ink) / 0.05);
+    transform: translateY(-1px);
+  }
+
+  .btn-tag {
+    background: hsl(var(--black));
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .btn-surface {
+    background: hsl(var(--elev));
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.65);
+  }
+
+  /* Form Elements */
+  .input, input, textarea, select {
+    background: #fff;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    color: hsl(var(--ink));
+    box-shadow: none;
+    font-family: var(--font-body);
+  }
+  .input:focus, input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: hsl(var(--ink));
+    box-shadow: 0 0 0 4px color-mix(in srgb, hsl(var(--primary)) 22%, transparent);
+  }
+
+  /* Sidebar Navigation Overrides */
+  [data-sidebar="menu"] {
+    list-style: none !important;
+    padding-left: 0 !important;
+  }
+  
+  [data-sidebar="menu-item"] {
+    list-style: none !important;
+    margin: 0 !important;
+  }
+
+  /* Animation Classes */
+  .fade-in {
+    animation: fadeIn 0.6s ease-out;
+  }
+
+  .slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .hover-lift {
+    transition: transform 200ms ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Rich Text Editor Prose Styles */
+  .prose {
+    @apply text-foreground;
+  }
+
+  .prose h1 {
+    @apply text-foreground font-semibold text-xl mb-4;
+  }
+
+  .prose h2 {
+    @apply text-foreground font-semibold text-lg mb-3;
+  }
+
+  .prose h3 {
+    @apply text-foreground font-semibold text-base mb-2;
+  }
+
+  .prose p {
+    @apply text-foreground mb-3 leading-relaxed;
+  }
+
+  .prose ul {
+    @apply text-foreground mb-3 pl-6 list-disc;
+  }
+
+  .prose ol {
+    @apply text-foreground mb-3 pl-6 list-decimal;
+  }
+
+  .prose li {
+    @apply mb-1;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-primary pl-4 italic text-muted-foreground;
+  }
+
+  .prose code {
+    @apply bg-muted px-1 py-0.5 rounded text-sm font-mono;
+  }
+
+  .prose a {
+    @apply text-primary underline hover:text-primary-hover;
+  }
+
+  .prose strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .prose em {
+    @apply italic;
+  }
+
+  /* Custom styles for markdown content to reduce excessive spacing */
+  .markdown-content {
+    @apply leading-relaxed;
+  }
+
+  .markdown-content p {
+    @apply mb-2 last:mb-0;
+  }
+
+  .markdown-content ul,
+  .markdown-content ol {
+    @apply mb-2 last:mb-0;
+  }
+
+  .markdown-content li {
+    @apply mb-0.5 last:mb-0;
+  }
+
+  .markdown-content ul li {
+    @apply list-disc ml-4;
+  }
+
+  .markdown-content ol li {
+    @apply list-decimal ml-4;
+  }
+
+  .markdown-content h1,
+  .markdown-content h2,
+  .markdown-content h3,
+  .markdown-content h4,
+  .markdown-content h5,
+  .markdown-content h6 {
+    @apply font-semibold mb-2 mt-3 first:mt-0;
+  }
+
+  .markdown-content h1 {
+    @apply text-lg;
+  }
+
+  .markdown-content h2 {
+    @apply text-base;
+  }
+
+  .markdown-content h3 {
+    @apply text-sm;
+  }
+
+  .markdown-content blockquote {
+    @apply border-l-4 border-primary pl-4 italic mb-2;
+  }
+
+  .markdown-content code {
+    @apply bg-muted px-1 py-0.5 rounded text-sm font-mono;
+  }
+
+  .markdown-content pre {
+    @apply bg-muted p-3 rounded-md mb-2 overflow-x-auto;
+  }
+
+  .markdown-content pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .markdown-content strong {
+    @apply font-semibold;
+  }
+
+  .markdown-content em {
+    @apply italic;
+  }
+
+  .markdown-content a {
+    @apply text-primary underline hover:text-primary-hover;
+  }
+
+  .markdown-content hr {
+    @apply border-t border-border my-3;
+  }
+
+  /* Table styles for markdown content */
+  .markdown-content table {
+    @apply w-full border-collapse mb-4 text-sm;
+  }
+
+  .markdown-content thead {
+    @apply bg-muted;
+  }
+
+  .markdown-content th {
+    @apply border border-border px-4 py-2 text-left font-semibold;
+  }
+
+  .markdown-content td {
+    @apply border border-border px-4 py-2;
+  }
+
+  .markdown-content tbody tr:nth-child(even) {
+    @apply bg-muted/30;
+  }
+
+  .markdown-content tbody tr:hover {
+    @apply bg-muted/50 transition-colors;
+  }
+
+  /* Responsive table wrapper */
+  .markdown-content > table {
+    @apply block overflow-x-auto;
+  }
+
+  /* Override prose spacing for better message formatting */
+  .prose-sm p {
+    @apply mb-2;
+  }
+
+  .prose-sm ul,
+  .prose-sm ol {
+    @apply mb-2;
+  }
+
+  .prose-sm li {
+    @apply mb-0;
+  }
+
+  /* Enhanced Research Content Styling */
+  .research-content {
+    @apply text-foreground;
+    line-height: 1.75;
+    letter-spacing: 0.01em;
+  }
+
+  .research-content strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .research-content em {
+    @apply italic text-muted-foreground;
+  }
+
+  .research-content a:not(.citation-link) {
+    @apply text-primary underline hover:text-primary/80 transition-colors;
+  }
+
+  .research-content ul {
+    @apply list-disc list-inside space-y-2 my-4;
+  }
+
+  .research-content ol {
+    @apply list-decimal list-inside space-y-2 my-4;
+  }
+
+  .research-content li {
+    @apply leading-relaxed;
+  }
+
+  .research-content p {
+    @apply mb-4 leading-relaxed;
+  }
+
+  .research-content h3 {
+    @apply text-lg font-semibold mt-6 mb-3 text-foreground;
+  }
+
+  .research-content h4 {
+    @apply text-base font-semibold mt-4 mb-2 text-foreground;
+  }
+
+  .research-content code {
+    @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-foreground;
+  }
+
+  .research-content pre {
+    @apply bg-muted p-3 rounded-md overflow-x-auto my-4;
+  }
+
+  .research-content blockquote {
+    @apply border-l-4 border-primary/30 pl-4 italic my-4 text-muted-foreground;
+  }
+
+  .research-content .citation-link {
+    @apply inline-flex items-center gap-1 align-baseline;
+  }
+
+  .research-content table {
+    @apply w-full border-collapse my-4;
+  }
+
+  .research-content th {
+    @apply bg-muted font-semibold text-left p-2 border border-border;
+  }
+
+  .research-content td {
+    @apply p-2 border border-border;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+}
+
+/* Custom Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

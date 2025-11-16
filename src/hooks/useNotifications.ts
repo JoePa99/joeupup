@@ -2,8 +2,19 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import type { NotificationType } from '@/lib/notifications';
 import { toast as sonnerToast } from 'sonner';
+import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
+
+type NotificationRow = Database['public']['Tables']['notifications']['Row'];
+type NotificationReadRow = Database['public']['Tables']['notification_reads']['Row'];
+type NotificationWithReads = NotificationRow & {
+  notification_reads?: Pick<NotificationReadRow, 'read_at'>[];
+};
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : 'An unexpected error occurred';
 
 interface NotificationData {
   id: string;
@@ -15,7 +26,7 @@ interface NotificationData {
   created_at?: string;
   agent_id?: string;
   channel_id?: string;
-  data?: any;
+  data?: NotificationRow['data'];
 }
 
 export interface UseNotificationsReturn {
@@ -69,7 +80,8 @@ export function useNotifications(): UseNotificationsReturn {
       if (notificationsError) throw notificationsError;
 
       // Transform the data to include is_read and read_at
-      const transformedNotifications = (notificationsData || []).map((notification: any) => ({
+      const typedNotifications = (notificationsData as NotificationWithReads[] | null) ?? [];
+      const transformedNotifications = typedNotifications.map((notification) => ({
         id: notification.id,
         type: notification.type,
         title: notification.title,
@@ -88,9 +100,10 @@ export function useNotifications(): UseNotificationsReturn {
       const unread = transformedNotifications.filter(n => !n.is_read).length;
       setUnreadCount(unread);
 
-    } catch (err: any) {
+    } catch (err) {
+      const message = getErrorMessage(err);
       console.error('Error fetching notifications:', err);
-      setError(err.message);
+      setError(message);
       setNotifications([]);
       setUnreadCount(0);
     } finally {
@@ -125,7 +138,7 @@ export function useNotifications(): UseNotificationsReturn {
 
       setUnreadCount(prev => Math.max(0, prev - 1));
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error marking notification as read:', err);
       toast({
         title: "Error",
@@ -173,7 +186,7 @@ export function useNotifications(): UseNotificationsReturn {
         description: "All notifications marked as read",
       });
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error marking all notifications as read:', err);
       toast({
         title: "Error",
@@ -206,7 +219,7 @@ export function useNotifications(): UseNotificationsReturn {
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error deleting notification:', err);
       toast({
         title: "Error",
@@ -234,10 +247,10 @@ export function useNotifications(): UseNotificationsReturn {
           table: 'notifications',
           filter: `user_id=eq.${user.id}`
         },
-        (payload) => {
+        (payload: RealtimePostgresInsertPayload<NotificationRow>) => {
           console.log('New notification received:', payload);
-          
-          const newNotification = payload.new as any;
+
+          const newNotification = payload.new;
           
           // Add to notifications list
           setNotifications(prev => [{
@@ -294,10 +307,16 @@ export function useNotifications(): UseNotificationsReturn {
   };
 }
 
+type NotificationSettingsRow = Database['public']['Tables']['user_notification_settings']['Row'];
+type NotificationSettingsState = Record<
+  string,
+  Pick<NotificationSettingsRow, 'enabled' | 'email_enabled'>
+>;
+
 export function useNotificationSettings() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [settings, setSettings] = useState<NotificationSettingsState>({});
   const [loading, setLoading] = useState(true);
 
   const fetchSettings = useCallback(async () => {
@@ -308,8 +327,7 @@ export function useNotificationSettings() {
 
     try {
       setLoading(true);
-      
-      const { supabase } = await import('@/integrations/supabase/client');
+
       const { data, error } = await supabase
         .from('user_notification_settings')
         .select('*')
@@ -318,8 +336,8 @@ export function useNotificationSettings() {
       if (error) throw error;
 
       // Convert array to object keyed by notification_type
-      const settingsMap: Record<string, any> = {};
-      data?.forEach(setting => {
+      const settingsMap: NotificationSettingsState = {};
+      data?.forEach((setting: NotificationSettingsRow) => {
         settingsMap[setting.notification_type] = {
           enabled: setting.enabled,
           email_enabled: setting.email_enabled,
@@ -327,7 +345,7 @@ export function useNotificationSettings() {
       });
 
       setSettings(settingsMap);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching notification settings:', err);
       toast({
         title: "Error",
@@ -346,10 +364,7 @@ export function useNotificationSettings() {
     if (!user?.id) return;
 
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('user_notification_settings')
         .update(updates)
         .eq('user_id', user.id)
@@ -358,14 +373,17 @@ export function useNotificationSettings() {
       if (error) throw error;
 
       // Update local state
-      setSettings(prev => ({
-        ...prev,
-        [notificationType]: {
-          ...prev[notificationType],
-          ...updates,
-        },
-      }));
-    } catch (err: any) {
+      setSettings(prev => {
+        const previous = prev[notificationType] ?? { enabled: null, email_enabled: null };
+        return {
+          ...prev,
+          [notificationType]: {
+            ...previous,
+            ...updates,
+          },
+        };
+      });
+    } catch (err) {
       console.error('Error updating notification setting:', err);
       throw err;
     }
@@ -375,8 +393,6 @@ export function useNotificationSettings() {
     if (!user?.id) return;
 
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      
       const { error } = await supabase
         .from('user_notification_settings')
         .update({ enabled: true })
@@ -392,7 +408,7 @@ export function useNotificationSettings() {
         });
         return updated;
       });
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error enabling all notifications:', err);
       throw err;
     }
@@ -402,8 +418,6 @@ export function useNotificationSettings() {
     if (!user?.id) return;
 
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      
       const { error } = await supabase
         .from('user_notification_settings')
         .update({ enabled: false })
@@ -419,7 +433,7 @@ export function useNotificationSettings() {
         });
         return updated;
       });
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error disabling all notifications:', err);
       throw err;
     }

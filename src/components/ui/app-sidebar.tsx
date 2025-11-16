@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { HashtagIcon, PlusIcon, Cog6ToothIcon, HomeIcon, ChatBubbleLeftEllipsisIcon, DocumentTextIcon, PuzzlePieceIcon, UserPlusIcon, BookOpenIcon, ChatBubbleLeftRightIcon, CpuChipIcon, ChartBarIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { HashtagIcon, PlusIcon, Cog6ToothIcon, HomeIcon, ChatBubbleLeftEllipsisIcon, DocumentTextIcon, PuzzlePieceIcon, UserPlusIcon, BookOpenIcon, CpuChipIcon, ChartBarIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,7 +58,6 @@ export function AppSidebar() {
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [userProfile, setUserProfile] = useState<{ company_id: string | null } | null>(null);
   const [createChannelModalOpen, setCreateChannelModalOpen] = useState(false);
-  const [onboardingType, setOnboardingType] = useState<string | null>(null);
   const [userCollapsibleOpen, setUserCollapsibleOpen] = useState(false);
   const [aiAgentsOpen, setAiAgentsOpen] = useState(true);
   const [channelsOpen, setChannelsOpen] = useState(true);
@@ -74,7 +73,6 @@ export function AppSidebar() {
   useEffect(() => {
     if (user) {
       fetchUserProfile();
-      fetchOnboardingType();
     }
   }, [user]);
 
@@ -127,25 +125,6 @@ export function AppSidebar() {
       setUserProfile(data);
     } catch (error) {
       console.error('Error fetching user profile:', error);
-    }
-  };
-
-  const fetchOnboardingType = async () => {
-    if (!user?.id) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('onboarding_sessions')
-        .select('onboarding_type')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error) throw error;
-      setOnboardingType(data?.onboarding_type || null);
-    } catch (error) {
-      console.error('Error fetching onboarding type:', error);
     }
   };
 
@@ -460,19 +439,6 @@ export function AppSidebar() {
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              
-              {/* Consultations - Only visible to company admins with consulting onboarding type */}
-              {/* This feature is specific to consulting companies for managing client consultations */}
-              {user && !isLoadingAdmin && isAdmin && onboardingType === 'consulting' && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink to="/consultations" className="flex items-center space-x-2">
-                      <ChatBubbleLeftRightIcon className="h-4 w-4" />
-                      {!collapsed && <span>Consultations</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
               
               {/* Team Management - Invite and manage team members */}
               <SidebarMenuItem>

@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 import { generateQueryEmbedding } from '../_shared/embedding-config.ts';
+import { queryPlaybookEntries, formatPlaybookResults } from '../../../src/lib/assistants/queryPlaybook.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -624,7 +625,25 @@ async function processUserMessage(
           } else {
             console.log('🔍 [GOOGLE-DRIVE] No Google Drive files found');
           }
-          
+
+          const playbookEntries = await queryPlaybookEntries({
+            supabaseClient,
+            companyId: userProfile.company_id,
+            query: searchQuery,
+            limit: 3,
+          });
+
+          if (playbookEntries.length > 0) {
+            const formattedPlaybook = formatPlaybookResults(playbookEntries);
+            if (formattedPlaybook) {
+              if (contextData) contextData += '\n\n---\n\n';
+              contextData += formattedPlaybook;
+              console.log(`Added ${playbookEntries.length} playbook entries to context`);
+            }
+          } else {
+            console.log('No playbook entries matched the search query');
+          }
+
           // Fallback: Try OpenAI Assistant file_search if no results from either source
           if (!contextData || contextData.trim() === '') {
             console.log('Attempting fallback file search via OpenAI Assistant...');

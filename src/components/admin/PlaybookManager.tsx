@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -97,7 +97,19 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
   const { user } = useAuth();
   const { data: isPlatformAdmin } = useIsPlatformAdmin();
   const [companyId, setCompanyId] = useState<string | null>(propCompanyId ?? null);
-  const [sectionDocuments, setSectionDocuments] = useState<Record<string, any[]>>({});
+interface PlaybookEntrySummary {
+  id: string;
+  title: string;
+  description: string | null;
+  status: PlaybookStatus | null;
+  tags: string[] | null;
+  section_tag: string | null;
+  updated_at: string | null;
+  created_at: string;
+  is_published: boolean | null;
+}
+
+const [sectionEntries, setSectionEntries] = useState<Record<string, PlaybookEntrySummary[]>>({});
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   
   // Always fetch user's own company ID, even for platform admins
@@ -144,35 +156,34 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
   });
 
   // Fetch documents for all sections
-  useEffect(() => {
-    if (sections && sections.length > 0) {
-      fetchAllSectionDocuments();
-    }
-  }, [sections]);
+  const fetchAllSectionEntries = useCallback(async () => {
+    if (!sections || sections.length === 0) return;
 
-  const fetchAllSectionDocuments = async () => {
-    if (!sections) return;
+    const entriesMap: Record<string, PlaybookEntrySummary[]> = {};
 
-    const documentsMap: Record<string, any[]> = {};
-    
     for (const section of sections) {
       try {
         const { data, error } = await supabase
-          .from('document_archives')
-          .select('id, name, file_name, file_type, created_at, doc_type')
+          .from('playbook_entries')
+          .select('id, title, description, status, tags, section_tag, updated_at, created_at, is_published')
           .eq('playbook_section_id', section.id)
-          .order('created_at', { ascending: false });
+          .eq('company_id', section.company_id)
+          .order('updated_at', { ascending: false });
 
         if (error) throw error;
-        documentsMap[section.id] = data || [];
+        entriesMap[section.id] = data || [];
       } catch (error) {
-        console.error(`Error fetching documents for section ${section.id}:`, error);
-        documentsMap[section.id] = [];
+        console.error(`Error fetching playbook entries for section ${section.id}:`, error);
+        entriesMap[section.id] = [];
       }
     }
 
-    setSectionDocuments(documentsMap);
-  };
+    setSectionEntries(entriesMap);
+  }, [sections]);
+
+  useEffect(() => {
+    fetchAllSectionEntries();
+  }, [fetchAllSectionEntries]);
 
   const toggleSectionExpanded = (sectionId: string) => {
     setExpandedSections(prev => ({
@@ -464,7 +475,7 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
                   )}
 
                   {/* Linked Documents Collapsible */}
-                  {sectionDocuments[section.id] && sectionDocuments[section.id].length > 0 && (
+                  {sectionEntries[section.id] && sectionEntries[section.id].length > 0 && (
                     <Collapsible
                       open={expandedSections[section.id]}
                       onOpenChange={() => toggleSectionExpanded(section.id)}
@@ -475,7 +486,7 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
                           <div className="flex items-center gap-2">
                             <FileText className="h-4 w-4" />
                             <span className="text-sm font-medium">
-                              Linked Documents ({sectionDocuments[section.id].length})
+                              Playbook Entries ({sectionEntries[section.id].length})
                             </span>
                           </div>
                           {expandedSections[section.id] ? (
@@ -487,24 +498,31 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
                       </CollapsibleTrigger>
                       <CollapsibleContent className="mt-2">
                         <div className="space-y-2 pl-6">
-                          {sectionDocuments[section.id].map((doc) => (
+                          {sectionEntries[section.id].map((entry) => (
                             <div
-                              key={doc.id}
+                              key={entry.id}
                               className="flex items-center justify-between p-2 rounded-md border border-border hover:bg-muted/50 transition-colors"
                             >
                               <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium truncate">{doc.name}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{doc.file_name}</p>
+                                  <p className="text-sm font-medium truncate">{entry.title}</p>
+                                  {entry.description && (
+                                    <p className="text-xs text-muted-foreground truncate">{entry.description}</p>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {doc.doc_type}
+                                {entry.status && (
+                                  <Badge variant="outline" className="text-xs capitalize">
+                                    {entry.status}
+                                  </Badge>
+                                )}
+                                <Badge variant={entry.is_published ? 'secondary' : 'outline'} className="text-xs">
+                                  {entry.is_published ? 'Indexed' : 'Draft'}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
-                                  {new Date(doc.created_at).toLocaleDateString()}
+                                  {new Date(entry.updated_at || entry.created_at).toLocaleDateString()}
                                 </span>
                               </div>
                             </div>
@@ -529,15 +547,15 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
                       Close
                     </Button>
                   </div>
-                  <FileUploadManager 
-                    companyId={companyId || ''}
-                    sectionId={section.id}
-                    onFileUploaded={(url, name) => {
-                      console.log('File uploaded:', name, url);
-                      // Refresh documents list to show newly uploaded files
-                      fetchAllSectionDocuments();
-                    }}
-                  />
+                    <FileUploadManager
+                      companyId={companyId || ''}
+                      sectionId={section.id}
+                      onFileUploaded={(url, name) => {
+                        console.log('File uploaded:', name, url);
+                        // Refresh entries list to show newly uploaded files
+                        fetchAllSectionEntries();
+                      }}
+                    />
                 </div>
               )}
             </Card>
@@ -608,8 +626,7 @@ export function PlaybookManager({ onBack, companyId: propCompanyId }: PlaybookMa
         open={showCreateDocumentModal}
         onOpenChange={setShowCreateDocumentModal}
         onDocumentCreated={() => {
-          // Could refresh documents list here if needed
-          console.log('Document created successfully');
+          fetchAllSectionEntries();
         }}
         companyId={companyId}
       />

@@ -2531,6 +2531,102 @@ export type Database = {
           },
         ]
       }
+      playbook_entries: {
+        Row: {
+          company_id: string
+          content_html: string | null
+          content_markdown: string | null
+          created_at: string
+          description: string | null
+          id: string
+          indexed_chunks: number | null
+          is_published: boolean | null
+          last_indexed_at: string | null
+          playbook_section_id: string | null
+          section_tag: string | null
+          status: Database["public"]["Enums"]["playbook_status"] | null
+          summary: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          company_id: string
+          content_html?: string | null
+          content_markdown?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          indexed_chunks?: number | null
+          is_published?: boolean | null
+          last_indexed_at?: string | null
+          playbook_section_id?: string | null
+          section_tag?: string | null
+          status?: Database["public"]["Enums"]["playbook_status"] | null
+          summary?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          company_id?: string
+          content_html?: string | null
+          content_markdown?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          indexed_chunks?: number | null
+          is_published?: boolean | null
+          last_indexed_at?: string | null
+          playbook_section_id?: string | null
+          section_tag?: string | null
+          status?: Database["public"]["Enums"]["playbook_status"] | null
+          summary?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playbook_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "admin_kpi_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "playbook_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "playbook_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_seat_usage"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "playbook_entries_playbook_section_id_fkey"
+            columns: ["playbook_section_id"]
+            isOneToOne: false
+            referencedRelation: "playbook_sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "playbook_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       playbook_documents: {
         Row: {
           company_id: string | null

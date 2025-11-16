@@ -332,6 +332,53 @@ export async function embedInlineDocument(
 }
 
 /**
+ * Trigger indexing for an existing playbook entry via Edge Function
+ */
+export async function indexPlaybookEntry(entryId: string): Promise<DocumentProcessingResult> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('No active session found');
+    }
+
+    const supabaseUrl = "https://chaeznzfvbgrpzvxwvyu.supabase.co";
+    const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoYWV6bnpmdmJncnB6dnh3dnl1IiwiYXVkaWVuY2UiOiJhbm9uIiwiaWF0IjoxNzU1MTkyMDE1LCJleHAiOjIwNzA3NjgwMTV9.tninczi1BMTk6G6knEMN8QKPMaAbFZjRkxg71CINcTY";
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/index-playbook-entry`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': supabaseAnonKey,
+      },
+      body: JSON.stringify({ entry_id: entryId }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: Failed to index playbook entry`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (parseError) {
+        console.error('Failed to parse index-playbook-entry error response:', parseError);
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error: any) {
+    console.error('Error indexing playbook entry:', error);
+    return {
+      success: false,
+      message: 'Failed to index playbook entry',
+      error: error?.message || 'Unknown error occurred',
+    };
+  }
+}
+
+/**
  * Test if the Edge Function is accessible
  */
 export async function testEdgeFunctionAccess(): Promise<boolean> {

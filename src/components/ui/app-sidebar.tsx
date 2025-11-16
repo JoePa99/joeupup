@@ -446,12 +446,13 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Settings Section - HIDDEN */}
-        {/* Contains navigation links for configuration and management features */}
-        {false && <SidebarGroup>
+        {/* Playbook access */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-xs uppercase tracking-wider text-gray-500 font-medium">
+            Knowledge Base
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* Playbook - Company playbook management accessible to all users */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <NavLink to="/playbook" className="flex items-center space-x-2">
@@ -460,6 +461,15 @@ export function AppSidebar() {
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Settings Section - HIDDEN */}
+        {/* Contains navigation links for configuration and management features */}
+        {false && <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
               
               {/* Consultations - Only visible to company admins with consulting onboarding type */}
               {/* This feature is specific to consulting companies for managing client consultations */}

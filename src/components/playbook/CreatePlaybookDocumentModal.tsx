@@ -10,7 +10,7 @@ import { RichTextEditor, htmlToMarkdown } from './rich-text-editor';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { embedInlineDocument } from '@/lib/document-processing';
+import { indexPlaybookEntry } from '@/lib/document-processing';
 import { Loader2, Save, Plus } from 'lucide-react';
 
 interface CreatePlaybookDocumentModalProps {
@@ -113,70 +113,41 @@ export function CreatePlaybookDocumentModal({
       // Convert HTML content to Markdown
       const markdownContent = htmlToMarkdown(formData.content);
 
-      if (addToKnowledgeBase) {
-        // For "Save & Add to Knowledge Base": Embed directly without storage
-        const result = await embedInlineDocument(
-          finalCompanyId,
-          user.id,
-          markdownContent,
-          formData.title,
-          sectionTag,
-          formData.description,
-          formData.sectionId
-        );
+      const { data: entry, error: entryError } = await supabase
+        .from('playbook_entries')
+        .insert({
+          company_id: finalCompanyId,
+          user_id: user.id,
+          playbook_section_id: formData.sectionId,
+          title: formData.title.trim(),
+          description: formData.description || null,
+          summary: formData.description || null,
+          content_html: formData.content,
+          content_markdown: markdownContent,
+          section_tag: sectionTag,
+          tags: selectedSection?.tags || [sectionTag],
+          status: addToKnowledgeBase ? 'complete' : 'draft',
+          is_published: addToKnowledgeBase,
+        })
+        .select()
+        .single();
 
+      if (entryError) throw entryError;
+
+      if (addToKnowledgeBase && entry) {
+        const result = await indexPlaybookEntry(entry.id);
         if (!result.success) {
-          throw new Error(result.error || 'Failed to embed document');
+          throw new Error(result.error || 'Failed to index playbook entry');
         }
 
         toast({
           title: "Success",
-          description: result.message || "Document embedded and added to knowledge base",
+          description: result.message || "Playbook entry added to the knowledge base",
         });
       } else {
-        // For "Save Draft": Use the original storage-based approach
-        // Create filename
-        const timestamp = Date.now();
-        const sanitizedTitle = formData.title
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .trim();
-        const filename = `playbook-${sectionTag}-${sanitizedTitle}-${timestamp}.md`;
-        
-        // Upload to Supabase Storage
-        const filePath = `${user.id}/playbook/${filename}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(filePath, new Blob([markdownContent], { type: 'text/markdown' }));
-
-        if (uploadError) throw uploadError;
-
-        // Insert into document_archives
-        const { data: documentData, error: documentError } = await supabase
-          .from('document_archives')
-          .insert({
-            name: formData.title,
-            file_name: filename,
-            file_type: 'text/markdown',
-            file_size: markdownContent.length,
-            storage_path: filePath,
-            uploaded_by: user.id,
-            company_id: finalCompanyId,
-            doc_type: 'template',
-            description: formData.description || null,
-            tags: ['playbook', sectionTag],
-            playbook_section_id: formData.sectionId,
-            is_editable: true,
-          })
-          .select()
-          .single();
-
-        if (documentError) throw documentError;
-
         toast({
-          title: "Success",
-          description: "Document saved as draft",
+          title: "Draft saved",
+          description: "Playbook entry saved as draft",
         });
       }
 

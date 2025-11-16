@@ -41,6 +41,8 @@ interface Channel {
   name: string;
   description: string | null;
   is_private: boolean;
+  company_id: string;
+  created_by: string;
 }
 
 interface Message {
@@ -92,6 +94,7 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [channel, setChannel] = useState<Channel | null>(null);
   const [channelAgents, setChannelAgents] = useState<Agent[]>([]);
+  const [availableAssistants, setAvailableAssistants] = useState<Agent[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   
@@ -131,6 +134,7 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
   
   // Image generation state
   const [isImageGenerationOpen, setIsImageGenerationOpen] = useState(false);
+  const [canManageChannelMembers, setCanManageChannelMembers] = useState(false);
 
   // Helper function to deduplicate messages by ID and client_message_id
   const dedupeMessages = (messages: Message[]): Message[] => {
@@ -176,6 +180,8 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
       // Clear channel state when switching to agent mode
       setChannel(null);
       setChannelAgents([]);
+      setAvailableAssistants([]);
+      setCanManageChannelMembers(false);
       fetchAgent(agentId);
       fetchConversations(agentId);
     } else if (channelId && userProfile?.company_id) {
@@ -184,6 +190,7 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
       setAgent(null);
       setSelectedConversation(null);
       setConversations([]);
+      setCanManageChannelMembers(false);
       fetchChannel(channelId);
       fetchChannelMessages(channelId);
       fetchChannelAgents(channelId);
@@ -195,6 +202,14 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
       fetchMessages(selectedConversation.id);
     }
   }, [selectedConversation]);
+
+  useEffect(() => {
+    if (channelId && userProfile?.company_id) {
+      fetchAvailableAssistants(userProfile.company_id);
+    } else {
+      setAvailableAssistants([]);
+    }
+  }, [channelId, userProfile?.company_id]);
 
   // Real-time subscriptions for channel messages
   useEffect(() => {
@@ -524,11 +539,54 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
     }
   };
 
+  const fetchChannelMembership = async (channelId: string, createdBy: string) => {
+    if (!user?.id) {
+      setCanManageChannelMembers(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('channel_members')
+        .select('role')
+        .eq('channel_id', channelId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      const isAdmin = data?.role === 'admin' || createdBy === user.id;
+      setCanManageChannelMembers(!!isAdmin);
+    } catch (error) {
+      console.error('Error fetching channel membership:', error);
+      setCanManageChannelMembers(createdBy === user.id);
+    }
+  };
+
+  const fetchAvailableAssistants = async (companyId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('agents')
+        .select('id, name, description, role, nickname, avatar_url, status')
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .order('name');
+
+      if (error) throw error;
+      setAvailableAssistants(data || []);
+    } catch (error) {
+      console.error('Error fetching available assistants:', error);
+      setAvailableAssistants([]);
+    }
+  };
+
   const fetchChannel = async (id: string) => {
     try {
       // Use the access-controlled channel fetch
       const channelData = await getChannelWithAccess(id);
-      
+
       if (!channelData) {
         // User doesn't have access to this channel
         console.warn('User does not have access to channel:', id);
@@ -541,7 +599,9 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
         return;
       }
       
-      setChannel(channelData);
+      const typedChannel = channelData as Channel;
+      setChannel(typedChannel);
+      await fetchChannelMembership(typedChannel.id, typedChannel.created_by);
     } catch (error) {
       console.error('Error fetching channel:', error);
       setChannel(null);
@@ -582,6 +642,155 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
     } catch (error) {
       console.error('Error fetching channel agents:', error);
       setChannelAgents([]);
+    }
+  };
+
+  const inviteAssistantToChannel = async (assistantId: string): Promise<boolean> => {
+    if (!channelId || !channel) {
+      toast({
+        title: "Channel not ready",
+        description: "Select a channel before inviting assistants.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!canManageChannelMembers) {
+      toast({
+        title: "Permission denied",
+        description: "Only channel admins can invite assistants.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (channelAgents.some(agent => agent.id === assistantId)) {
+      toast({
+        title: "Assistant already added",
+        description: "This assistant is already part of the channel.",
+      });
+      return false;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('channel_agents')
+        .insert({
+          channel_id: channelId,
+          agent_id: assistantId,
+          added_by: user?.id,
+        });
+
+      if (error) throw error;
+
+      const assistantInfo = availableAssistants.find(agent => agent.id === assistantId);
+      if (assistantInfo) {
+        setChannelAgents(prev => [...prev, assistantInfo]);
+      }
+
+      toast({
+        title: "Assistant added",
+        description: "The assistant can now help in this channel.",
+      });
+      return true;
+    } catch (error) {
+      console.error('Error inviting assistant:', error);
+      toast({
+        title: "Invite failed",
+        description: "Unable to add that assistant to the channel.",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const inviteCoworkerByEmail = async (email: string): Promise<boolean> => {
+    if (!channelId || !channel) {
+      toast({
+        title: "Channel not ready",
+        description: "Select a channel before inviting coworkers.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!canManageChannelMembers) {
+      toast({
+        title: "Permission denied",
+        description: "Only channel admins can invite coworkers.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      return false;
+    }
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, email, company_id')
+        .eq('company_id', channel.company_id)
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (!profile) {
+        toast({
+          title: "User not found",
+          description: "We couldn't find a coworker with that email in your company.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      const { data: existingMember, error: memberError } = await supabase
+        .from('channel_members')
+        .select('id')
+        .eq('channel_id', channelId)
+        .eq('user_id', profile.id)
+        .maybeSingle();
+
+      if (memberError && memberError.code !== 'PGRST116') {
+        throw memberError;
+      }
+
+      if (existingMember) {
+        toast({
+          title: "Already a member",
+          description: `${profile.email} already has access to this channel.`,
+        });
+        return false;
+      }
+
+      const { error: insertError } = await supabase
+        .from('channel_members')
+        .insert({
+          channel_id: channelId,
+          user_id: profile.id,
+          role: 'member',
+        });
+
+      if (insertError) throw insertError;
+
+      toast({
+        title: "Coworker invited",
+        description: `${profile.email} can now join this channel.`,
+      });
+      return true;
+    } catch (error) {
+      console.error('Error inviting coworker:', error);
+      toast({
+        title: "Invite failed",
+        description: "Unable to invite that coworker to the channel.",
+        variant: "destructive",
+      });
+      return false;
     }
   };
 
@@ -1360,6 +1569,10 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
             uploadedFiles={uploadedFiles}
             onFileUpload={handleFileUpload}
             onRemoveFile={removeFile}
+            canInviteMembers={canManageChannelMembers}
+            availableAssistants={availableAssistants}
+            onInviteAssistant={inviteAssistantToChannel}
+            onInviteCoworker={inviteCoworkerByEmail}
           />
         </div>
 

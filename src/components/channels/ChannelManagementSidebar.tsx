@@ -11,11 +11,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Settings, Users, Bot, FileText, Save, Trash2, UserPlus, MoreVertical, Shield, UserCheck, Loader2, ChevronDown, Check, X, User } from "lucide-react";
+import { Settings, Users, Bot, FileText, Save, Trash2, UserPlus, MoreVertical, Shield, UserCheck, Loader2, ChevronDown, Check, X, User, Mail } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ChannelFilesList } from "./ChannelFilesList";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 interface ChannelManagementSidebarProps {
   channelId: string;
   isOpen: boolean;
@@ -34,7 +36,7 @@ export function ChannelManagementSidebar({
   const [isPrivate, setIsPrivate] = useState(false);
   const [isMemberSelectOpen, setIsMemberSelectOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const {
+  const { 
     channel,
     members,
     agents,
@@ -50,6 +52,10 @@ export function ChannelManagementSidebar({
     toggleAgent,
     deleteChannel
   } = useChannelManagement(channelId);
+  const { toast } = useToast();
+  const [assistantSelectOpen, setAssistantSelectOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [isInvitingByEmail, setIsInvitingByEmail] = useState(false);
 
   // Update form values when channel data loads
   useEffect(() => {
@@ -76,6 +82,81 @@ export function ChannelManagementSidebar({
       setIsMemberSelectOpen(false);
     }
   };
+
+  const handleInviteByEmail = async () => {
+    if (!inviteEmail.trim()) {
+      toast({
+        title: "Enter an email",
+        description: "Add your coworker's email address to invite them.",
+      });
+      return;
+    }
+
+    if (!channel?.company_id) {
+      toast({
+        title: "Channel not ready",
+        description: "Channel information is still loading. Please try again in a moment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsInvitingByEmail(true);
+    try {
+      const normalizedEmail = inviteEmail.trim().toLowerCase();
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, email, company_id')
+        .eq('company_id', channel.company_id)
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (!profile) {
+        toast({
+          title: "User not found",
+          description: "We couldn't find a coworker with that email in your company.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const success = await addMember(profile.id);
+      if (success) {
+        setInviteEmail("");
+      }
+    } catch (error) {
+      console.error('Error inviting member by email:', error);
+      toast({
+        title: "Invite failed",
+        description: "Something went wrong while inviting this coworker.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsInvitingByEmail(false);
+    }
+  };
+
+  const handleAssistantInvite = async (agentId: string) => {
+    const alreadyAdded = agents.some(agent => agent.agent_id === agentId);
+    if (alreadyAdded) {
+      toast({
+        title: "Assistant already added",
+        description: "This assistant is already part of the channel.",
+      });
+      return;
+    }
+
+    const success = await toggleAgent(agentId);
+    if (success) {
+      setAssistantSelectOpen(false);
+    }
+  };
+
+  const availableAgentOptions = availableAgents.filter(agent => !agents.some(ca => ca.agent_id === agent.id));
   const handleDeleteChannel = async () => {
     const success = await deleteChannel();
     if (success) {
@@ -219,48 +300,74 @@ export function ChannelManagementSidebar({
               <div className="px-4">
               {/* Team Tab - Combined Members and AI Agents */}
               <TabsContent value="team" className="space-y-4 mt-4 pb-4">
-                {/* Add Team Member Section */}
                 {canManage && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Add Team Member</label>
-                    <Popover open={isMemberSelectOpen} onOpenChange={setIsMemberSelectOpen}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" role="combobox" aria-expanded={isMemberSelectOpen} className="w-full justify-between" disabled={isUpdating}>
-                          Select company member...
-                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Add Team Member</label>
+                      <Popover open={isMemberSelectOpen} onOpenChange={setIsMemberSelectOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" aria-expanded={isMemberSelectOpen} className="w-full justify-between" disabled={isUpdating}>
+                            Select company member...
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0 bg-white">
+                          <Command>
+                            <CommandInput placeholder="Search company members..." className="border-0 focus:ring-0 focus:outline-none focus:border-0" />
+                            <CommandEmpty>No members found.</CommandEmpty>
+                            <CommandList>
+                              <CommandGroup>
+                                {companyMembers.filter(member => !member.is_in_channel).map(member => (
+                                  <CommandItem
+                                    key={member.id}
+                                    value={`${member.first_name || ''} ${member.last_name || ''} ${member.email}`}
+                                    onSelect={() => handleAddMember(member.id)}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarImage src={member.avatar_url || ''} />
+                                      <AvatarFallback className="text-xs">
+                                        {getCompanyMemberInitials(member)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium">{getCompanyMemberDisplayName(member)}</p>
+                                      <p className="text-xs text-muted-foreground">{member.email}</p>
+                                    </div>
+                                    <Check className={cn("h-4 w-4", "opacity-0")} />
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Invite by Email</label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="email"
+                          placeholder="coworker@company.com"
+                          value={inviteEmail}
+                          onChange={e => setInviteEmail(e.target.value)}
+                          disabled={isUpdating || isInvitingByEmail}
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={handleInviteByEmail}
+                          disabled={isUpdating || isInvitingByEmail || !inviteEmail.trim()}
+                        >
+                          {isInvitingByEmail ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Mail className="h-4 w-4" />
+                          )}
                         </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0 bg-white">
-                        <Command>
-                          <CommandInput placeholder="Search company members..." className="border-0 focus:ring-0 focus:outline-none focus:border-0" />
-                          <CommandEmpty>No members found.</CommandEmpty>
-                          <CommandList>
-                            <CommandGroup>
-                              {companyMembers.filter(member => !member.is_in_channel).map(member => (
-                                <CommandItem 
-                                  key={member.id} 
-                                  value={`${member.first_name || ''} ${member.last_name || ''} ${member.email}`} 
-                                  onSelect={() => handleAddMember(member.id)} 
-                                  className="flex items-center gap-2"
-                                >
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={member.avatar_url || ''} />
-                                    <AvatarFallback className="text-xs">
-                                      {getCompanyMemberInitials(member)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium">{getCompanyMemberDisplayName(member)}</p>
-                                    <p className="text-xs text-muted-foreground">{member.email}</p>
-                                  </div>
-                                  <Check className={cn("h-4 w-4", "opacity-0")} />
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                      </div>
+                      <p className="text-xs text-muted-foreground">We'll look up teammates in Supabase using their email.</p>
+                    </div>
                   </div>
                 )}
 
@@ -274,12 +381,12 @@ export function ChannelManagementSidebar({
                   <div className="space-y-2 mb-4">
                     {members.map(member => (
                       <div key={member.id} className="flex items-center justify-between p-2 border-b border-border">
-                         <div className="flex items-center gap-3">
-                           <div>
-                             <p className="text-sm font-medium">{getDisplayName(member)}</p>
-                             <p className="text-xs text-muted-foreground">{member.profiles.email}</p>
-                           </div>
-                         </div>
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{getDisplayName(member)}</p>
+                            <p className="text-xs text-muted-foreground">{member.profiles.email}</p>
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Badge variant={member.role === 'admin' ? 'default' : 'secondary'}>
                             {member.role === 'admin' ? <Shield className="h-3 w-3 mr-1" /> : <UserCheck className="h-3 w-3 mr-1" />}
@@ -310,9 +417,38 @@ export function ChannelManagementSidebar({
 
                 {/* AI Agents Section - Scrollable */}
                 <div>
-                  <h4 className="text-sm font-medium mb-3">
-                    AI Agents ({availableAgents.length})
-                  </h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium">AI Assistants ({availableAgents.length})</h4>
+                    {canManage && (
+                      <Popover open={assistantSelectOpen} onOpenChange={setAssistantSelectOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" disabled={isUpdating || availableAgentOptions.length === 0}>
+                            <UserPlus className="h-4 w-4 mr-1" />
+                            Add Assistant
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0 bg-white">
+                          <Command>
+                            <CommandInput placeholder="Search assistants..." className="border-0 focus:ring-0 focus:outline-none" />
+                            <CommandEmpty>No assistants available.</CommandEmpty>
+                            <CommandList>
+                              <CommandGroup>
+                                {availableAgentOptions.map(agent => (
+                                  <CommandItem key={agent.id} onSelect={() => handleAssistantInvite(agent.id)} className="flex items-center gap-2">
+                                    <Bot className="h-4 w-4" />
+                                    <div>
+                                      <p className="text-sm font-medium">{agent.name}</p>
+                                      <p className="text-xs text-muted-foreground">@{agent.nickname || agent.role}</p>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
                   <div className="max-h-[400px] overflow-y-auto">
                     <div className="space-y-2 pr-2">
                       {availableAgents.map(agent => {
@@ -326,10 +462,10 @@ export function ChannelManagementSidebar({
                               </p>
                             </div>
                             <div className="scale-75 origin-right">
-                              <Switch 
-                                checked={isAdded} 
-                                onCheckedChange={() => toggleAgent(agent.id)} 
-                                disabled={!canManage || isUpdating} 
+                              <Switch
+                                checked={isAdded}
+                                onCheckedChange={() => toggleAgent(agent.id)}
+                                disabled={!canManage || isUpdating}
                               />
                             </div>
                           </div>

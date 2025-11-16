@@ -3,9 +3,10 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Send, Upload, File, X, Paperclip, Bot, FileText as FileTextIcon } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Send, File, X, Paperclip, Bot, UserPlus, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,10 @@ interface ChatInputProps {
   uploadedFiles: File[];
   onFileUpload: (files: File[]) => void;
   onRemoveFile: (index: number) => void;
+  canInviteMembers?: boolean;
+  availableAssistants?: Agent[];
+  onInviteAssistant?: (assistantId: string) => Promise<boolean>;
+  onInviteCoworker?: (email: string) => Promise<boolean>;
 }
 
 export function ChatInput({
@@ -42,18 +47,27 @@ export function ChatInput({
   channelAgents = [],
   uploadedFiles,
   onFileUpload,
-  onRemoveFile
+  onRemoveFile,
+  canInviteMembers = false,
+  availableAssistants = [],
+  onInviteAssistant,
+  onInviteCoworker
 }: ChatInputProps) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number } | null>(null);
-  
+
   // Mention state
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStartPos, setMentionStartPos] = useState(-1);
   const [filteredAgents, setFilteredAgents] = useState<Agent[]>([]);
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+  const [isAssistantPopoverOpen, setIsAssistantPopoverOpen] = useState(false);
+  const [isCoworkerPopoverOpen, setIsCoworkerPopoverOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitingAssistantId, setInvitingAssistantId] = useState<string | null>(null);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
   
   // Reset selected index when filtered agents change
   useEffect(() => {
@@ -242,6 +256,73 @@ export function ChatInput({
     }, 0);
   };
 
+  const availableAssistantOptions = availableAssistants.filter(agent => !channelAgents.some(ca => ca.id === agent.id));
+
+  const handleAssistantInviteClick = async (assistantId: string) => {
+    if (!onInviteAssistant) {
+      toast({
+        title: "Invite unavailable",
+        description: "You don't have permission to invite assistants in this channel.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setInvitingAssistantId(assistantId);
+    try {
+      const success = await onInviteAssistant(assistantId);
+      if (success) {
+        setIsAssistantPopoverOpen(false);
+      }
+    } catch (error) {
+      console.error('Error inviting assistant:', error);
+      toast({
+        title: "Unable to invite assistant",
+        description: "We couldn't add that assistant to the channel.",
+        variant: "destructive",
+      });
+    } finally {
+      setInvitingAssistantId(null);
+    }
+  };
+
+  const handleCoworkerInvite = async () => {
+    if (!inviteEmail.trim()) {
+      toast({
+        title: "Enter an email",
+        description: "Add a coworker's email to send them an invite.",
+      });
+      return;
+    }
+
+    if (!onInviteCoworker) {
+      toast({
+        title: "Invite unavailable",
+        description: "You don't have permission to invite coworkers in this channel.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingInvite(true);
+    try {
+      const success = await onInviteCoworker(inviteEmail.trim());
+      if (success) {
+        setInviteEmail("");
+        setIsCoworkerPopoverOpen(false);
+      }
+    } catch (error) {
+      console.error('Error inviting coworker:', error);
+      toast({
+        title: "Unable to invite coworker",
+        description: "We couldn't add that teammate to the channel.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
@@ -332,6 +413,93 @@ export function ChatInput({
             document.body
           )}
         </div>
+
+        {canInviteMembers && (
+          <>
+            <div className="border-t border-gray-100"></div>
+            <div className="px-3 py-2 flex flex-wrap gap-2">
+              <Popover open={isAssistantPopoverOpen} onOpenChange={setIsAssistantPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8"
+                    disabled={availableAssistantOptions.length === 0 || isLoading || disabled}
+                  >
+                    <UserPlus className="h-4 w-4 mr-1" />
+                    Invite Assistant
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0 bg-white">
+                  <Command>
+                    <CommandInput placeholder="Search assistants..." className="border-0 focus:ring-0" />
+                    <CommandEmpty>No available assistants.</CommandEmpty>
+                    <CommandList>
+                      <CommandGroup>
+                        {availableAssistantOptions.map(agent => (
+                          <CommandItem
+                            key={agent.id}
+                            onSelect={() => handleAssistantInviteClick(agent.id)}
+                            className="flex items-center gap-2"
+                          >
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={agent.avatar_url || ''} />
+                              <AvatarFallback>
+                                <Bot className="h-3 w-3" />
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{agent.name}</p>
+                              <p className="text-xs text-muted-foreground">@{agent.nickname || agent.role}</p>
+                            </div>
+                            {invitingAssistantId === agent.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <UserPlus className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              <Popover open={isCoworkerPopoverOpen} onOpenChange={setIsCoworkerPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8"
+                    disabled={isLoading || disabled}
+                  >
+                    <Mail className="h-4 w-4 mr-1" />
+                    Invite Coworker
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Email address</label>
+                    <Input
+                      type="email"
+                      placeholder="name@company.com"
+                      value={inviteEmail}
+                      onChange={e => setInviteEmail(e.target.value)}
+                      disabled={isSendingInvite}
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={handleCoworkerInvite}
+                    disabled={isSendingInvite || !inviteEmail.trim()}
+                  >
+                    {isSendingInvite ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Invite"}
+                  </Button>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </>
+        )}
 
         {/* Attachment Section */}
         {uploadedFiles.length > 0 && (

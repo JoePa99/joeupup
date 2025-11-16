@@ -13,7 +13,24 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AgentToolManager } from "./AgentToolManager";
 import { ToolStatusIndicators } from "./ToolStatusIndicators";
-import { Bot, Plus, Edit, Trash2, Play, Pause, Settings, Loader2, RefreshCw, MessageSquare, Wrench, Maximize2 } from "lucide-react";
+import { Bot, Plus, Edit, Trash2, Loader2, Wrench, Maximize2, BookOpen } from "lucide-react";
+import { KnowledgeSourceSelector } from "./KnowledgeSourceSelector";
+
+interface AgentConfigurationMetadata {
+  persona?: string;
+  audience?: string;
+  tone?: string;
+  expertise?: string;
+}
+
+interface AgentConfiguration {
+  ai_provider?: string;
+  ai_model?: string;
+  max_tokens?: number;
+  temperature?: number;
+  web_access?: boolean;
+  metadata?: AgentConfigurationMetadata;
+}
 interface Agent {
   id: string;
   name: string;
@@ -23,12 +40,13 @@ interface Agent {
   status: 'active' | 'training' | 'inactive' | 'paused';
   assistant_id: string | null;
   vector_store_id: string | null;
-  configuration: any;
+  configuration: AgentConfiguration | null;
   avatar_url: string | null;
   system_instructions: string | null;
   is_default: boolean;
   created_at: string;
   updated_at: string;
+  company_id: string | null;
   agent_types?: {
     name: string;
     description: string;
@@ -46,8 +64,25 @@ interface AgentFormData {
   ai_model: string;
   max_tokens: number;
   web_access: boolean;
+  persona: string;
+  audience: string;
+  tone: string;
+  expertise: string;
+  agent_type_id?: string;
 }
-export function AgentManager() {
+interface AgentManagerProps {
+  companyId?: string;
+  companyName?: string;
+}
+
+type AgentUpdatePayload = Partial<Pick<Agent, 'name' | 'description' | 'role' | 'nickname' | 'status' | 'agent_type_id'>> & {
+  system_instructions?: string | null;
+  configuration?: AgentConfiguration;
+};
+
+export function AgentManager(props?: AgentManagerProps) {
+  const { companyId, companyName } = props || {};
+  const isCompanyScoped = !!companyId;
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -65,32 +100,50 @@ export function AgentManager() {
     ai_provider: 'openai',
     ai_model: 'gpt-4o-mini',
     max_tokens: 2000,
-    web_access: false
+    web_access: false,
+    persona: '',
+    audience: '',
+    tone: '',
+    expertise: '',
+    agent_type_id: undefined
   });
   const {
     toast
   } = useToast();
   const queryClient = useQueryClient();
+  const [knowledgeAgent, setKnowledgeAgent] = useState<Agent | null>(null);
+  const [isKnowledgeDialogOpen, setIsKnowledgeDialogOpen] = useState(false);
+  const headerTitle = isCompanyScoped ? `${companyName || 'Company'} Assistants` : 'Platform Assistants';
+  const headerDescription = isCompanyScoped
+    ? 'Create assistants that inherit this company\'s knowledge and metadata.'
+    : 'Manage the default assistant templates available to every company.';
 
   // Fetch agents (only default agents)
   const {
     data: agents = [],
     isLoading: agentsLoading
   } = useQuery({
-    queryKey: ['admin-agents'],
+    queryKey: ['admin-agents', companyId ?? 'default'],
     queryFn: async (): Promise<Agent[]> => {
-      const {
-        data,
-        error
-      } = await supabase.from('agents').select(`
+      let query = supabase
+        .from('agents')
+        .select(`
           *,
           agent_types(name, description)
-        `).eq('is_default', true).order('created_at', {
-        ascending: false
-      });
+        `)
+        .order('created_at', { ascending: false });
+
+      if (companyId) {
+        query = query.eq('company_id', companyId);
+      } else {
+        query = query.eq('is_default', true);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: companyId ? true : companyId === undefined
   });
 
   // Fetch agent types
@@ -131,7 +184,7 @@ export function AgentManager() {
         data,
         error
       } = await supabase.from('agents').insert({
-        company_id: null,
+        company_id: companyId || null,
         name: agentData.name,
         role: agentData.role,
         nickname: agentData.nickname,
@@ -141,13 +194,19 @@ export function AgentManager() {
         assistant_id: assistantData.assistant_id,
         vector_store_id: assistantData.vector_store_id,
         agent_type_id: agentData.agent_type_id,
-        is_default: true,
+        is_default: companyId ? false : true,
         configuration: {
           ai_provider: agentData.ai_provider,
           ai_model: agentData.ai_model,
           temperature: 0.7,
           max_tokens: agentData.max_tokens,
-          web_access: agentData.web_access
+          web_access: agentData.web_access,
+          metadata: {
+            persona: agentData.persona,
+            audience: agentData.audience,
+            tone: agentData.tone,
+            expertise: agentData.expertise
+          }
         }
       }).select().single();
       
@@ -159,7 +218,7 @@ export function AgentManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['admin-agents']
+        queryKey: ['admin-agents', companyId ?? 'default']
       });
       setIsCreateDialogOpen(false);
       resetForm();
@@ -181,11 +240,15 @@ export function AgentManager() {
     mutationFn: async ({
       id,
       updates,
-      assistant_id
+      assistant_id,
+      company_id,
+      is_default
     }: {
       id: string;
       updates: Partial<AgentFormData>;
       assistant_id: string | null;
+      company_id: string | null;
+      is_default: boolean;
     }) => {
       // Update OpenAI assistant if it exists and systemInstructions changed
       if (assistant_id && updates.systemInstructions !== undefined) {
@@ -201,40 +264,68 @@ export function AgentManager() {
       }
 
       // Map systemInstructions to system_instructions for the database
-      const { systemInstructions, ai_provider, ai_model, max_tokens, web_access, ...restUpdates } = updates;
-      const dbUpdates: any = {
-        ...restUpdates,
-        system_instructions: systemInstructions
+      const {
+        systemInstructions,
+        ai_provider,
+        ai_model,
+        max_tokens,
+        web_access,
+        persona,
+        audience,
+        tone,
+        expertise,
+        ...restUpdates
+      } = updates;
+      const dbUpdates: AgentUpdatePayload = {
+        ...(restUpdates as AgentUpdatePayload)
       };
-      
-      // Update configuration if AI provider fields changed
-      if (ai_provider || ai_model || max_tokens !== undefined || web_access !== undefined) {
-        const { data: currentAgent } = await supabase
-          .from('agents')
-          .select('configuration')
-          .eq('id', id)
-          .single();
-        
-        const currentConfig = (currentAgent?.configuration as any) || {};
-        dbUpdates.configuration = {
-          ...currentConfig,
-          ai_provider: ai_provider || currentConfig.ai_provider,
-          ai_model: ai_model || currentConfig.ai_model,
-          max_tokens: max_tokens !== undefined ? max_tokens : currentConfig.max_tokens,
-          web_access: web_access !== undefined ? web_access : currentConfig.web_access
-        };
+
+      if (systemInstructions !== undefined) {
+        dbUpdates.system_instructions = systemInstructions;
       }
-      
+
+      const { data: currentAgent } = await supabase
+        .from('agents')
+        .select('configuration')
+        .eq('id', id)
+        .single();
+
+      const currentConfig = (currentAgent?.configuration as AgentConfiguration) || {};
+      const currentMetadata = currentConfig.metadata || {};
+
+      dbUpdates.configuration = {
+        ...currentConfig,
+        ai_provider: ai_provider ?? currentConfig.ai_provider ?? 'openai',
+        ai_model: ai_model ?? currentConfig.ai_model ?? 'gpt-4o-mini',
+        max_tokens: max_tokens ?? currentConfig.max_tokens ?? 2000,
+        temperature: currentConfig.temperature ?? 0.7,
+        web_access: web_access ?? currentConfig.web_access ?? false,
+        metadata: {
+          ...currentMetadata,
+          ...(persona !== undefined ? { persona } : {}),
+          ...(audience !== undefined ? { audience } : {}),
+          ...(tone !== undefined ? { tone } : {}),
+          ...(expertise !== undefined ? { expertise } : {})
+        }
+      };
+
+      let query = supabase.from('agents').update(dbUpdates).eq('id', id);
+      if (company_id) {
+        query = query.eq('company_id', company_id);
+      } else if (is_default) {
+        query = query.eq('is_default', true);
+      }
+
       const {
         data,
         error
-      } = await supabase.from('agents').update(dbUpdates).eq('id', id).eq('is_default', true).select().single();
+      } = await query.select().single();
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['admin-agents']
+        queryKey: ['admin-agents', companyId ?? 'default']
       });
       setIsEditDialogOpen(false);
       setSelectedAgent(null);
@@ -272,7 +363,7 @@ export function AgentManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['admin-agents']
+        queryKey: ['admin-agents', companyId ?? 'default']
       });
       toast({
         title: "Agent deleted successfully"
@@ -297,7 +388,12 @@ export function AgentManager() {
       ai_provider: 'openai',
       ai_model: 'gpt-4o-mini',
       max_tokens: 2000,
-      web_access: false
+      web_access: false,
+      persona: '',
+      audience: '',
+      tone: '',
+      expertise: '',
+      agent_type_id: undefined
     });
   };
 
@@ -369,6 +465,7 @@ export function AgentManager() {
     setIsEditDialogOpen(true);
     
     // Set initial form data with database values
+    const metadata = (agent.configuration?.metadata as AgentConfigurationMetadata) || {};
     const initialFormData = {
       name: agent.name,
       description: agent.description || '',
@@ -379,7 +476,12 @@ export function AgentManager() {
       ai_provider: agent.configuration?.ai_provider || 'openai',
       ai_model: agent.configuration?.ai_model || agent.configuration?.model || 'gpt-4o-mini',
       max_tokens: agent.configuration?.max_tokens || 2000,
-      web_access: agent.configuration?.web_access || false
+      web_access: agent.configuration?.web_access || false,
+      persona: metadata.persona || '',
+      audience: metadata.audience || '',
+      tone: metadata.tone || '',
+      expertise: metadata.expertise || '',
+      agent_type_id: agent.agent_type_id || undefined
     };
     setFormData(initialFormData);
   };
@@ -407,7 +509,9 @@ export function AgentManager() {
   return <div className="space-y-6">
       {/* Header Actions */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold text-foreground">{headerTitle}</h2>
+          <p className="text-sm text-muted-foreground">{headerDescription}</p>
           <p className="text-muted-foreground">
             Total Agents: {agents.length}
           </p>
@@ -518,7 +622,7 @@ export function AgentManager() {
                 </div>
                 <div>
                   <Label htmlFor="status">Status</Label>
-                  <Select value={formData.status} onValueChange={(value: any) => setFormData({
+                  <Select value={formData.status} onValueChange={(value: AgentFormData['status']) => setFormData({
                   ...formData,
                   status: value
                 })}>
@@ -562,9 +666,64 @@ export function AgentManager() {
                 <div>
                   <Label htmlFor="description">Description</Label>
                   <Textarea id="description" value={formData.description} onChange={e => setFormData({
-                  ...formData,
-                  description: e.target.value
-                })} placeholder="Agent description and capabilities" rows={4} />
+                ...formData,
+                description: e.target.value
+              })} placeholder="Agent description and capabilities" rows={4} />
+                </div>
+                <div className="space-y-4 border-t pt-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground">Assistant Metadata</h3>
+                  <div>
+                    <Label htmlFor="persona">Representative Persona</Label>
+                    <Textarea
+                      id="persona"
+                      value={formData.persona}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        persona: e.target.value
+                      })}
+                      rows={3}
+                      placeholder="Narrative description for how this assistant should present itself"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="audience">Primary Audience</Label>
+                      <Input
+                        id="audience"
+                        value={formData.audience}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          audience: e.target.value
+                        })}
+                        placeholder="e.g., growth marketers, CS leaders"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="tone">Tone & Voice</Label>
+                      <Input
+                        id="tone"
+                        value={formData.tone}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          tone: e.target.value
+                        })}
+                        placeholder="e.g., direct, confident, and pragmatic"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="expertise">Key Expertise</Label>
+                    <Textarea
+                      id="expertise"
+                      value={formData.expertise}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        expertise: e.target.value
+                      })}
+                      rows={3}
+                      placeholder="List the systems, documents, or subject areas this assistant should lean on"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -633,6 +792,13 @@ export function AgentManager() {
                   <Wrench className="h-4 w-4 mr-1" />
                   Tools
                 </Button>
+                {companyId && <Button variant="outline" size="sm" onClick={() => {
+              setKnowledgeAgent(agent);
+              setIsKnowledgeDialogOpen(true);
+            }}>
+                    <BookOpen className="h-4 w-4 mr-1" />
+                    Knowledge
+                  </Button>}
                 <Button variant="outline" size="sm" onClick={() => handleDeleteAgent(agent)} disabled={deleteAgentMutation.isPending}>
                   <Trash2 className="h-4 w-4 mr-1" />
                   Delete
@@ -748,7 +914,7 @@ export function AgentManager() {
               </div>
               <div>
                 <Label htmlFor="edit-status">Status</Label>
-                <Select value={formData.status} onValueChange={(value: any) => setFormData({
+                <Select value={formData.status} onValueChange={(value: AgentFormData['status']) => setFormData({
                 ...formData,
                 status: value
               })}>
@@ -796,6 +962,61 @@ export function AgentManager() {
                 description: e.target.value
               })} placeholder="Agent description and capabilities" rows={4} />
               </div>
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-semibold text-muted-foreground">Assistant Metadata</h3>
+                <div>
+                  <Label htmlFor="edit-persona">Representative Persona</Label>
+                  <Textarea
+                    id="edit-persona"
+                    value={formData.persona}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      persona: e.target.value
+                    })}
+                    rows={3}
+                    placeholder="Narrative description for how this assistant should present itself"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edit-audience">Primary Audience</Label>
+                    <Input
+                      id="edit-audience"
+                      value={formData.audience}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        audience: e.target.value
+                      })}
+                      placeholder="e.g., growth marketers, CS leaders"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-tone">Tone & Voice</Label>
+                    <Input
+                      id="edit-tone"
+                      value={formData.tone}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        tone: e.target.value
+                      })}
+                      placeholder="e.g., direct, confident, and pragmatic"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="edit-expertise">Key Expertise</Label>
+                  <Textarea
+                    id="edit-expertise"
+                    value={formData.expertise}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      expertise: e.target.value
+                    })}
+                    rows={3}
+                    placeholder="List the systems, documents, or subject areas this assistant should lean on"
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <div className="flex justify-end space-x-2">
@@ -837,5 +1058,16 @@ export function AgentManager() {
             </div>
           </DialogContent>
         </Dialog>
+        {companyId && knowledgeAgent && (
+          <KnowledgeSourceSelector
+            agent={{ id: knowledgeAgent.id, name: knowledgeAgent.name }}
+            companyId={companyId}
+            isOpen={isKnowledgeDialogOpen}
+            onClose={() => {
+              setIsKnowledgeDialogOpen(false);
+              setKnowledgeAgent(null);
+            }}
+          />
+        )}
       </div>;
 }

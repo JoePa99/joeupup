@@ -138,6 +138,7 @@ export interface GenerateCompanyOSFromDocumentRequest {
   additionalContext?: string;
   bucket?: string;
   extractedText?: string; // Optional: pre-extracted text from frontend
+  documentArchiveId?: string;
 }
 
 export interface GenerateCompanyOSResponse {

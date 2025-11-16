@@ -12,15 +12,18 @@ import { supabase } from '@/integrations/supabase/client';
 import type { CompanyOS } from '@/types/company-os';
 import { extractTextFromPDF } from '@/lib/pdf-extraction';
 import { PDFExtractionProgress } from './PDFExtractionProgress';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CompanyOSGeneratorProps {
   companyId: string;
   companyName?: string;
   onGenerated: (companyOS: CompanyOS) => void;
+  hideWebResearch?: boolean;
 }
 
-export function CompanyOSGenerator({ companyId, companyName, onGenerated }: CompanyOSGeneratorProps) {
+export function CompanyOSGenerator({ companyId, companyName, onGenerated, hideWebResearch = false }: CompanyOSGeneratorProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isGenerating, setIsGenerating] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [generationStep, setGenerationStep] = useState<'uploading' | 'extracting' | 'generating' | null>(null);
@@ -125,6 +128,15 @@ export function CompanyOSGenerator({ companyId, companyName, onGenerated }: Comp
       return;
     }
 
+    if (!user?.id) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in before uploading CompanyOS documents.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setIsGenerating(true);
     setGenerationStep('uploading');
 
@@ -180,6 +192,30 @@ export function CompanyOSGenerator({ companyId, companyName, onGenerated }: Comp
         throw new Error(`Failed to upload document: ${uploadError.message}`);
       }
 
+      // Step 2.5: Register document in archives + trigger embeddings for unified storage
+      const { data: registerData, error: registerError } = await supabase.functions.invoke('process-company-os', {
+        body: {
+          company_id: companyId,
+          file_path: filePath,
+          file_name: selectedFile.name,
+          file_type: selectedFile.type || 'application/pdf',
+          file_size: selectedFile.size,
+          uploaded_by: user.id,
+          bucket: 'documents',
+          additional_context: documentContext || undefined,
+        }
+      });
+
+      if (registerError) {
+        throw new Error(registerError.message || 'Failed to register CompanyOS upload');
+      }
+
+      if (!registerData?.success || !registerData?.document_archive_id) {
+        throw new Error(registerData?.error || 'Failed to record CompanyOS document');
+      }
+
+      const documentArchiveId: string = registerData.document_archive_id;
+
       // Step 3: Generate CompanyOS (with progress tracking)
       const { success, companyOS, error } = await generateCompanyOSFromDocument(
         {
@@ -189,6 +225,7 @@ export function CompanyOSGenerator({ companyId, companyName, onGenerated }: Comp
           fileType: selectedFile.type || 'application/octet-stream',
           additionalContext: documentContext || undefined,
           bucket: 'documents',
+          documentArchiveId,
           extractedText, // Pass pre-extracted text if available
         },
         (step) => {
@@ -234,22 +271,26 @@ export function CompanyOSGenerator({ companyId, companyName, onGenerated }: Comp
           GENERATE CompanyOS
         </CardTitle>
         <CardDescription>
-          Use AI-powered research or upload a document to create a comprehensive company operating system.
+          {showWebResearch
+            ? 'Use AI-powered research or upload a document to create a comprehensive company operating system.'
+            : 'Upload approved documents to generate a comprehensive CompanyOS.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <Tabs defaultValue="web-research" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-transparent gap-0 p-0 h-auto border-b rounded-none">
-            <TabsTrigger 
-              value="web-research" 
-              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm rounded-none border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
-            >
-              <Globe className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Web Research</span>
-              <span className="sm:hidden">Research</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="document-upload" 
+            {showWebResearch && (
+              <TabsTrigger
+                value="web-research"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm rounded-none border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
+              >
+                <Globe className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Web Research</span>
+                <span className="sm:hidden">Research</span>
+              </TabsTrigger>
+            )}
+            <TabsTrigger
+              value="document-upload"
               className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm rounded-none border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
             >
               <Upload className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -258,122 +299,86 @@ export function CompanyOSGenerator({ companyId, companyName, onGenerated }: Comp
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="web-research" className="space-y-4 mt-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="companyName" className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4" />
-                  Company Name *
-                </Label>
-                <Input
-                  id="companyName"
-                  placeholder="e.g., Acme Corporation"
-                  value={formData.companyName}
-                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  disabled={isGenerating}
-                />
+          {showWebResearch && (
+            <TabsContent value="web-research" className="space-y-4 mt-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="companyName" className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    Company Name *
+                  </Label>
+                  <Input
+                    id="companyName"
+                    placeholder="e.g., Acme Corporation"
+                    value={formData.companyName}
+                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                    disabled={isGenerating}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="industry">
+                    Industry / Sector
+                  </Label>
+                  <Input
+                    id="industry"
+                    placeholder="e.g., SaaS, E-commerce, Healthcare"
+                    value={formData.industry}
+                    onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                    disabled={isGenerating}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Helps guide the research
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="websiteUrl" className="flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    Website URL
+                  </Label>
+                  <Input
+                    id="websiteUrl"
+                    type="url"
+                    placeholder="https://www.example.com"
+                    value={formData.websiteUrl}
+                    onChange={(e) => setFormData({ ...formData, websiteUrl: e.target.value })}
+                    disabled={isGenerating}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Provides additional context for research
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="specificContext">
+                    Specific Context
+                  </Label>
+                  <Textarea
+                    id="specificContext"
+                    placeholder="e.g., Target market is SMBs in North America, key competitors are X and Y..."
+                    value={formData.specificContext}
+                    onChange={(e) => setFormData({ ...formData, specificContext: e.target.value })}
+                    disabled={isGenerating}
+                    rows={4}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Adds more context for research
+                  </p>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="industry">
-                  Industry / Sector
-                </Label>
-                <Input
-                  id="industry"
-                  placeholder="e.g., SaaS, E-commerce, Healthcare"
-                  value={formData.industry}
-                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                  disabled={isGenerating}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Optional: Helps guide the research
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="websiteUrl" className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Website URL
-                </Label>
-                <Input
-                  id="websiteUrl"
-                  type="url"
-                  placeholder="https://www.example.com"
-                  value={formData.websiteUrl}
-                  onChange={(e) => setFormData({ ...formData, websiteUrl: e.target.value })}
-                  disabled={isGenerating}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Optional: Provides additional context for research
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="specificContext">
-                  Specific Context
-                </Label>
-                <Textarea
-                  id="specificContext"
-                  placeholder="e.g., Target market is SMBs in North America, key competitors are X and Y..."
-                  value={formData.specificContext}
-                  onChange={(e) => setFormData({ ...formData, specificContext: e.target.value })}
-                  disabled={isGenerating}
-                  rows={4}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Optional: Add specific details to guide the AI research
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-muted/50 p-4 space-y-2">
-              <h4 className="font-medium text-sm">What happens next?</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
-                  <span>AI will research your company using Perplexity's web search</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
-                  <span>Generate comprehensive brand strategy, market analysis, and positioning</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
-                  <span>Create customer profiles, value propositions, and brand voice guidelines</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
-                  <span>All AI agents will use this context to provide better, brand-aligned responses</span>
-                </li>
-              </ul>
-            </div>
-
-            <Button
-              onClick={handleGenerate}
-              disabled={isGenerating || !formData.companyName.trim()}
-              className="w-full"
-              size="lg"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Researching & Generating... (this may take 30-60 seconds)
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate CompanyOS
-                </>
-              )}
-            </Button>
-
-            {isGenerating && (
-              <div className="text-center text-sm text-muted-foreground">
-                <p>AI is conducting comprehensive research on your company...</p>
-                <p className="mt-1">This process analyzes market data, competitors, and industry trends.</p>
-              </div>
-            )}
-          </TabsContent>
+              <Button
+                className="w-full"
+                onClick={handleGenerate}
+                disabled={isGenerating || !formData.companyName.trim()}
+              >
+                {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate CompanyOS
+              </Button>
+            </TabsContent>
+          )}
 
           <TabsContent value="document-upload" className="space-y-4 mt-6">
             <div className="space-y-4">

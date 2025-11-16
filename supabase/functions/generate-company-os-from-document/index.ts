@@ -14,6 +14,7 @@ interface GenerateCompanyOSFromDocumentRequest {
   fileType: string;
   additionalContext?: string;
   bucket?: string;
+  documentArchiveId?: string;
 }
 
 const OPENAI_FILES_ENDPOINT = 'https://api.openai.com/v1/files';
@@ -508,7 +509,8 @@ serve(async (req) => {
       fileName,
       fileType,
       additionalContext = '',
-      bucket = 'documents'
+      bucket = 'documents',
+      documentArchiveId
     }: GenerateCompanyOSFromDocumentRequest = await req.json();
 
     companyId = reqCompanyId;
@@ -653,6 +655,7 @@ serve(async (req) => {
               filePath,
               fileType,
                 fileSize,
+              documentArchiveId,
               uploadedAt: new Date().toISOString()
             },
             additionalContext,
@@ -689,6 +692,7 @@ serve(async (req) => {
               filePath,
               fileType,
                 fileSize,
+              documentArchiveId,
               uploadedAt: new Date().toISOString()
             },
             additionalContext,

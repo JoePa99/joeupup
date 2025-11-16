@@ -11,7 +11,7 @@ import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import Settings from "./pages/Settings";
 import Playbook from "./pages/Playbook";
-import Dashboard from "./pages/Dashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import Agents from "./pages/Agents";
 import CompanyAgents from "./pages/CompanyAgents";
 import AdminAgents from "./pages/AdminAgents";
@@ -83,7 +83,7 @@ const App = () => (
                 </ProtectedRoute>
               } 
             />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={<AdminDashboard />} />
             <Route path="/dashboard/agents" element={<AdminAgents />} />
             <Route path="/dashboard/consultations" element={<AdminConsultations />} />
             <Route path="/dashboard/users" element={<AdminUsers />} />

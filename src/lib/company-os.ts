@@ -373,7 +373,11 @@ export function extractAssumptions(osData: CompanyOSData): string[] {
 /**
  * Calculate completeness score of CompanyOS
  */
-export function calculateCompleteness(osData: CompanyOSData): number {
+export function calculateCompleteness(osData: CompanyOSData | Record<string, any>): number {
+  if (!osData || Object.keys(osData as Record<string, any>).length === 0) {
+    return 0;
+  }
+
   let totalFields = 0;
   let filledFields = 0;
 
@@ -396,6 +400,10 @@ export function calculateCompleteness(osData: CompanyOSData): number {
   };
 
   checkObject(osData);
+
+  if (totalFields === 0) {
+    return 0;
+  }
 
   return Math.round((filledFields / totalFields) * 100);
 }

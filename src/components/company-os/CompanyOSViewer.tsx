@@ -14,7 +14,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import type { CompanyOS } from '@/types/company-os';
+import type { CompanyOS, CompanyOSData } from '@/types/company-os';
 import { calculateCompleteness, extractAssumptions } from '@/lib/company-os';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useState } from 'react';
@@ -24,14 +24,30 @@ interface CompanyOSViewerProps {
 }
 
 export function CompanyOSViewer({ companyOS }: CompanyOSViewerProps) {
-  const osData = companyOS.os_data;
-  const core = osData.coreIdentityAndStrategicFoundation;
-  const market = osData.customerAndMarketContext;
-  const brand = osData.brandVoiceAndExpression;
-  
-  const completeness = calculateCompleteness(osData);
-  const assumptions = extractAssumptions(osData);
+  const osData = (companyOS.os_data || {}) as Partial<CompanyOSData>;
+  const hasStructuredData = Boolean(
+    osData.coreIdentityAndStrategicFoundation &&
+    osData.customerAndMarketContext &&
+    osData.brandVoiceAndExpression
+  );
+
+  const completeness = hasStructuredData ? calculateCompleteness(osData as CompanyOSData) : 0;
+  const assumptions = hasStructuredData ? extractAssumptions(osData as CompanyOSData) : [];
   const [showRawText, setShowRawText] = useState(false);
+
+  if (!hasStructuredData) {
+    return (
+      <DocumentOnlyCompanyOSView
+        companyOS={companyOS}
+        showRawText={showRawText}
+        onToggleRawText={() => setShowRawText((prev) => !prev)}
+      />
+    );
+  }
+
+  const core = osData.coreIdentityAndStrategicFoundation!;
+  const market = osData.customerAndMarketContext!;
+  const brand = osData.brandVoiceAndExpression!;
 
   return (
     <div className="space-y-6">
@@ -456,54 +472,138 @@ export function CompanyOSViewer({ companyOS }: CompanyOSViewerProps) {
         </CardContent>
       </Card>
 
-      {/* Raw Scraped Text Section - Only show for document uploads */}
-      {companyOS.raw_scraped_text && companyOS.metadata?.source_type === 'document_upload' && (
-        <Card className="shadow-none border border-gray-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Raw Document Text
-            </CardTitle>
-            <CardDescription>
-              The extracted text from your uploaded document that was used to generate this CompanyOS.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-muted-foreground">
-                  Document: {companyOS.metadata?.source_document?.fileName || 'Unknown'}
-                </div>
-                <button
-                  onClick={() => setShowRawText(!showRawText)}
-                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors"
-                >
-                  {showRawText ? (
-                    <>
-                      <ChevronUp className="h-4 w-4" />
-                      Hide Text
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-4 w-4" />
-                      Show Text
-                    </>
-                  )}
-                </button>
-              </div>
-              
-              {showRawText && (
-                <div className="bg-gray-100 rounded-lg p-4 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-muted-foreground font-mono">
-                    {companyOS.raw_scraped_text}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <RawDocumentSection
+        companyOS={companyOS}
+        showRawText={showRawText}
+        onToggleRawText={() => setShowRawText((prev) => !prev)}
+      />
     </div>
+  );
+}
+
+interface DocumentOnlyCompanyOSViewProps {
+  companyOS: CompanyOS;
+  showRawText: boolean;
+  onToggleRawText: () => void;
+}
+
+function DocumentOnlyCompanyOSView({ companyOS, showRawText, onToggleRawText }: DocumentOnlyCompanyOSViewProps) {
+  const fileInfo = companyOS.metadata?.source_document;
+  const summary = companyOS.metadata?.document_summary;
+
+  return (
+    <div className="space-y-6">
+      <Card className="shadow-none border border-gray-200">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            CompanyOS Document Upload
+          </CardTitle>
+          <CardDescription>
+            This CompanyOS keeps the uploaded document exactly as provided. Reference the raw text below when working with the team.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Version</p>
+              <p className="text-lg font-semibold">v{companyOS.version}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Last Updated</p>
+              <p className="text-lg font-semibold">{new Date(companyOS.last_updated).toLocaleDateString()}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">File Size</p>
+              <p className="text-lg font-semibold">{fileInfo?.fileSize ? `${(fileInfo.fileSize / 1024).toFixed(1)} KB` : '—'}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">File Name</p>
+              <p className="text-sm font-medium">{fileInfo?.fileName || 'Unknown document'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Uploaded By</p>
+              <p className="text-sm font-medium">{companyOS.generated_by || 'Automated Upload'}</p>
+            </div>
+          </div>
+
+          {summary && (
+            <div className="bg-gray-50 rounded-lg p-4 border border-dashed border-gray-200">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Document Preview</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-line">{summary}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <RawDocumentSection
+        companyOS={companyOS}
+        showRawText={showRawText}
+        onToggleRawText={onToggleRawText}
+      />
+    </div>
+  );
+}
+
+interface RawDocumentSectionProps {
+  companyOS: CompanyOS;
+  showRawText: boolean;
+  onToggleRawText: () => void;
+}
+
+function RawDocumentSection({ companyOS, showRawText, onToggleRawText }: RawDocumentSectionProps) {
+  if (!companyOS.raw_scraped_text || companyOS.metadata?.source_type !== 'document_upload') {
+    return null;
+  }
+
+  return (
+    <Card className="shadow-none border border-gray-200">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" />
+          Raw Document Text
+        </CardTitle>
+        <CardDescription>
+          The extracted text from your uploaded document.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Document: {companyOS.metadata?.source_document?.fileName || 'Unknown'}
+            </div>
+            <button
+              onClick={onToggleRawText}
+              className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              {showRawText ? (
+                <>
+                  <ChevronUp className="h-4 w-4" />
+                  Hide Text
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4" />
+                  Show Text
+                </>
+              )}
+            </button>
+          </div>
+
+          {showRawText && (
+            <div className="bg-gray-100 rounded-lg p-4 max-h-96 overflow-y-auto">
+              <pre className="whitespace-pre-wrap text-sm text-muted-foreground font-mono">
+                {companyOS.raw_scraped_text}
+              </pre>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

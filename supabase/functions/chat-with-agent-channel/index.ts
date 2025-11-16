@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
-import { generateQueryEmbedding } from '../_shared/embedding-config.ts';
+import { buildAssistantPrompt, buildDynamicContext, expandQuery, parseUserQuery } from '../_shared/dynamic-context.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -551,7 +551,7 @@ async function processChannelAgentMessage(
     }
   }
 
-  let contextData = '';
+  let toolContext = '';
   let toolResults: any[] = [];
 
   // Step 2: Execute tools if needed
@@ -589,35 +589,35 @@ async function processChannelAgentMessage(
               // Format web research results with rich context
               const researchData = toolResult.results?.research;
               if (researchData) {
-                contextData += `\n\n[Web Research Results - Powered by Perplexity]:\n`;
-                contextData += `Query: ${researchData.query}\n`;
-                contextData += `Summary: ${researchData.summary}\n`;
+              toolContext += `\n\n[Web Research Results - Powered by Perplexity]:\n`;
+              toolContext += `Query: ${researchData.query}\n`;
+              toolContext += `Summary: ${researchData.summary}\n`;
                 
                 if (researchData.sections && researchData.sections.length > 0) {
-                  contextData += `\nDetailed Analysis:\n`;
+                  toolContext += `\nDetailed Analysis:\n`;
                   researchData.sections.forEach((section: any, index: number) => {
-                    contextData += `${index + 1}. ${section.title}\n${section.content}\n\n`;
+                    toolContext += `${index + 1}. ${section.title}\n${section.content}\n\n`;
                   });
                 }
                 
                 if (researchData.key_insights && researchData.key_insights.length > 0) {
-                  contextData += `Key Insights:\n`;
+                  toolContext += `Key Insights:\n`;
                   researchData.key_insights.forEach((insight: any) => {
-                    contextData += `- ${insight}\n`;
+                    toolContext += `- ${insight}\n`;
                   });
-                  contextData += `\n`;
+                  toolContext += `\n`;
                 }
                 
                 if (researchData.sources && researchData.sources.length > 0) {
-                  contextData += `Sources (${researchData.sources.length}):\n`;
+                  toolContext += `Sources (${researchData.sources.length}):\n`;
                   researchData.sources.forEach((source: any, index: number) => {
-                    contextData += `${index + 1}. ${source.title} - ${source.url}\n`;
+                    toolContext += `${index + 1}. ${source.title} - ${source.url}\n`;
                   });
                 }
               }
             } else {
               // Standard tool result formatting
-              contextData += `\n\n[${toolResult.tool_id} Results]: ${toolResult.summary}\n${JSON.stringify(toolResult.results, null, 2)}`;
+              toolContext += `\n\n[${toolResult.tool_id} Results]: ${toolResult.summary}\n${JSON.stringify(toolResult.results, null, 2)}`;
             }
           }
         } catch (error) {
@@ -634,142 +634,13 @@ async function processChannelAgentMessage(
   }
 
   // Step 3: Perform document search if needed (with fallback for knowledge queries)
-  const shouldSearchDocs = 
-    analysis.action_type === 'document_search' || 
+  const shouldSearchDocs =
+    analysis.action_type === 'document_search' ||
     analysis.action_type === 'both' ||
     /\b(sop|standard operating procedure|policy|procedure|handbook|guidelines|company doc|knowledge base)\b/i.test(message);
 
   if (shouldSearchDocs) {
-    const searchQuery = analysis.document_search_query || message;
-    console.log('Performing document search using Supabase vector search with query:', searchQuery);
-    
-    try {
-      // Get channel to retrieve company_id
-      const { data: channelData, error: channelError } = await supabaseClient
-        .from('channels')
-        .select('company_id')
-        .eq('id', channelId)
-        .single();
-
-      if (channelError) {
-        console.error('Failed to fetch channel data:', channelError);
-      } else if (channelData?.company_id) {
-        console.log(`Searching documents for company: ${channelData.company_id}`);
-        
-        try {
-          // Generate embedding for the search query using shared config
-          const queryEmbedding = await generateQueryEmbedding(searchQuery, openaiApiKey);
-          console.log('Generated embedding for document search');
-          
-          // Search for relevant documents using the match_documents function
-          const { data: matchedDocs, error: searchError } = await supabaseClient
-            .rpc('match_documents', {
-              query_embedding: queryEmbedding,
-              match_threshold: 0.25,
-              match_count: 8,
-              p_company_id: channelData.company_id,
-              p_agent_id: agentId
-            });
-
-          if (searchError) {
-            console.error('Document search error:', searchError);
-          } else if (matchedDocs && matchedDocs.length > 0) {
-            console.log(`Found ${matchedDocs.length} relevant documents`);
-            
-            // Format the relevant documents for context (adaptive limit based on number of documents)
-            // If fewer documents, allow more content per document to ensure full context
-            const maxContentLength = matchedDocs.length <= 3 ? 20000 : 10000;
-            const relevantDocs = matchedDocs.map((doc: any) => {
-              const trimmedContent = doc.content.length > maxContentLength 
-                ? doc.content.substring(0, maxContentLength) + '...' 
-                : doc.content;
-              return `Document: ${doc.file_name || 'Unknown'}\nContent: ${trimmedContent}\nSimilarity: ${doc.similarity.toFixed(3)}`;
-            }).join('\n\n---\n\n');
-            
-            contextData += `\n\n[Document Search Results]: ${relevantDocs}`;
-            console.log('Retrieved relevant documents from Supabase vector search');
-          } else {
-            console.log('No relevant documents found in vector search');
-            // Try to get max similarity for debugging by lowering threshold temporarily
-            const { data: debugDocs } = await supabaseClient
-              .rpc('match_documents', {
-                query_embedding: queryEmbedding,
-                match_threshold: 0.0,
-                match_count: 1,
-                p_company_id: channelData.company_id,
-                p_agent_id: agentId
-              });
-            
-            if (debugDocs && debugDocs.length > 0) {
-              console.log(`Debug: Max similarity found: ${debugDocs[0].similarity.toFixed(3)} (threshold: 0.25)`);
-            } else {
-              console.log('Debug: No documents found even with threshold 0.0 - check if documents exist for this company');
-            }
-            
-            // Fallback: Try OpenAI Assistant file_search if agent has vector store
-            console.log('Attempting fallback file search via OpenAI Assistant...');
-            const { data: agentVectorStore } = await supabaseClient
-              .from('agents')
-              .select('vector_store_id, assistant_id')
-              .eq('id', agentId)
-              .single();
-            
-            if (agentVectorStore?.vector_store_id && agentVectorStore?.assistant_id) {
-              try {
-                // Use AI provider service with file_search enabled
-                const fallbackResponse = await supabaseClient.functions.invoke('ai-provider-service', {
-                  body: {
-                    provider: 'openai',
-                    model: 'gpt-4o',
-                    messages: [
-                      {
-                        role: 'system',
-                        content: `You are a document search assistant. Search your knowledge base for information related to: "${searchQuery}". Return only relevant excerpts from documents, formatted as:
-
-Document: [filename]
-Content: [relevant excerpt]
-
-If no relevant documents are found, respond with "No relevant documents found in knowledge base."`
-                      },
-                      {
-                        role: 'user',
-                        content: `Search for information about: ${searchQuery}`
-                      }
-                    ],
-                    max_tokens: 1000,
-                    temperature: 0.1,
-                    tools: [{ type: 'file_search' }],
-                    tool_resources: {
-                      file_search: {
-                        vector_store_ids: [agentVectorStore.vector_store_id]
-                      }
-                    }
-                  }
-                });
-
-                if (fallbackResponse.data?.choices?.[0]?.message?.content) {
-                  const fallbackContent = fallbackResponse.data.choices[0].message.content;
-                  if (!fallbackContent.includes('No relevant documents found')) {
-                    contextData += `\n\n[Fallback Document Search Results]: ${fallbackContent}`;
-                    console.log('Fallback file search found relevant documents');
-                  } else {
-                    console.log('Fallback file search also found no relevant documents');
-                  }
-                }
-              } catch (fallbackError) {
-                console.error('Fallback file search failed:', fallbackError);
-              }
-            } else {
-              console.log('Agent has no vector store configured for fallback search');
-            }
-          }
-        } catch (embeddingError) {
-          console.error('Failed to generate embedding for search query:', embeddingError);
-        }
-      }
-    } catch (error) {
-      console.error('Document search error:', error);
-    }
+    console.log('Document search intent detected – routing to dynamic context retrieval.');
   }
 
   // Step 4: Get agent information and AI config
@@ -795,164 +666,83 @@ If no relevant documents are found, respond with "No relevant documents found in
   // Determine selected model early (needed for document attachment check)
   const selectedModel = webAccess && aiProvider === 'openai' ? 'gpt-4o-search-preview' : aiModel;
 
-  // Step 4.5: Fetch CompanyOS for enhanced context
-  let companyOSContext = '';
+  const parsedQuery = parseUserQuery(message);
+  const expandedQuery = await expandQuery(parsedQuery || message, openaiApiKey);
+  const expandedQueries = (expandedQuery.expanded && expandedQuery.expanded.length > 0)
+    ? expandedQuery.expanded
+    : (expandedQuery.original ? [expandedQuery.original] : [message]);
+
+  const dynamicContext = await buildDynamicContext({
+    supabaseClient,
+    companyId: agentData.company_id,
+    agentId,
+    queries: expandedQueries,
+    baseQuery: expandedQuery.original || parsedQuery || message,
+    openaiApiKey
+  });
+
   let documentAttachment: any = null;
-  let documentSummary = '';
-  
-  if (agentData.company_id) {
-    try {
-      const { data: companyOS, error: osError } = await supabaseClient
-        .from('company_os')
-        .select('os_data, raw_scraped_text, metadata')
-        .eq('company_id', agentData.company_id)
-        .single();
+  const sourceDocument = dynamicContext.attachmentSource;
 
-      if (!osError && companyOS?.os_data) {
-        console.log('🏢 [COMPANY-OS] Found CompanyOS for company, formatting context...');
-        
-        // Fetch document summary from metadata
-        documentSummary = companyOS.metadata?.document_summary || '';
-        
-        // Format CompanyOS as structured context
-        const osData = companyOS.os_data;
-        const core = osData.coreIdentityAndStrategicFoundation;
-        const market = osData.customerAndMarketContext;
-        const brand = osData.brandVoiceAndExpression;
+  if (sourceDocument?.filePath && aiProvider === 'openai') {
+    const modelsWithFileSearch = ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-4o-2024-08-06', 'gpt-4-turbo-2024-04-09'];
+    const supportsAttachments = modelsWithFileSearch.includes(selectedModel) || modelsWithFileSearch.includes(aiModel);
 
-        // Create a concise, well-formatted context (optimized for token efficiency)
-        companyOSContext = `
-# COMPANY CONTEXT (CompanyOS)
+    if (supportsAttachments) {
+      try {
+        console.log('🏢 [COMPANY-OS] Model supports file attachments, uploading source document...');
+        const { data: fileData, error: downloadError } = await supabaseClient.storage
+          .from(sourceDocument.bucket || 'documents')
+          .download(sourceDocument.filePath);
 
-## Core Identity
-${core.companyOverview}
+        if (!downloadError && fileData) {
+          const formData = new FormData();
+          formData.append('purpose', 'assistants');
+          const fileWithName = new File([fileData], sourceDocument.fileName || 'document.pdf', {
+            type: sourceDocument.fileType || 'application/pdf'
+          });
+          formData.append('file', fileWithName);
 
-**Mission:** ${core.missionAndVision.missionStatement}
-**Vision:** ${core.missionAndVision.visionStatement}
-**Values:** ${core.coreValues.join(', ')}
-**Right to Win:** ${core.rightToWin}
+          const uploadResponse = await fetch('https://api.openai.com/v1/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiApiKey}`,
+            },
+            body: formData,
+          });
 
-## Market Position
-**Target:** ${core.positioningStatement.targetSegment}
-**Unique Benefit:** ${core.positioningStatement.uniqueBenefit}
-**ICP:** ${market.idealCustomerProfile.definingTraits}
-**Key Competitors:** ${market.marketAnalysis.topDirectCompetitors.join(', ')}
-
-## Brand Voice
-**Purpose:** ${brand.brandPurpose}
-**Transformation:** ${brand.transformation.from} → ${brand.transformation.to}
-**Voice Style:** ${brand.celebrityAnalogue}
-**Do's:** ${brand.brandVoiceDosAndDonts.dos.join('; ')}
-**Don'ts:** ${brand.brandVoiceDosAndDonts.donts.join('; ')}
-**Beliefs:** ${brand.powerfulBeliefs.join(' | ')}
-
-## Customer Pain Points
-${market.customerJourney.topPainPoints.join('; ')}
-
-## Value Propositions
-${market.valuePropositions.map(vp => `${vp.clientType}: ${vp.value}`).join(' | ')}
-`;
-
-        // Add document summary if available
-        if (documentSummary) {
-          companyOSContext += `\n\n## Document Summary
-${documentSummary}
-`;
-          console.log('🏢 [COMPANY-OS] Added document summary, length:', documentSummary.length);
-        }
-
-        // Add raw scraped text if available (from document uploads) - for backward compatibility
-        if (companyOS.raw_scraped_text && companyOS.metadata?.source_type === 'document_upload' && !documentSummary) {
-          companyOSContext += `\n\n## Source Document Text
-Document: ${companyOS.metadata?.source_document?.fileName || 'Unknown'}
-
-The following is the raw text extracted from the uploaded document:
-
-${companyOS.raw_scraped_text}
-`;
-          console.log('🏢 [COMPANY-OS] Added raw document text, length:', companyOS.raw_scraped_text.length);
-        }
-        
-        // Check if we should attach the document file
-        const sourceDocument = companyOS.metadata?.source_document;
-        if (sourceDocument?.filePath && aiProvider === 'openai') {
-          // Check if model supports file attachments (OpenAI models with file_search capability)
-          const modelsWithFileSearch = ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-4o-2024-08-06', 'gpt-4-turbo-2024-04-09'];
-          const supportsAttachments = modelsWithFileSearch.includes(selectedModel) || modelsWithFileSearch.includes(aiModel);
-          
-          if (supportsAttachments) {
-            try {
-              console.log('🏢 [COMPANY-OS] Model supports file attachments, uploading document...');
-              
-              // Download document from Supabase Storage
-              const { data: fileData, error: downloadError } = await supabaseClient.storage
-                .from(sourceDocument.bucket || 'documents')
-                .download(sourceDocument.filePath);
-              
-              if (!downloadError && fileData) {
-                // Upload to OpenAI
-                const formData = new FormData();
-                formData.append('purpose', 'assistants');
-                const fileWithName = new File([fileData], sourceDocument.fileName || 'document.pdf', { 
-                  type: sourceDocument.fileType || 'application/pdf' 
-                });
-                formData.append('file', fileWithName);
-                
-                const uploadResponse = await fetch('https://api.openai.com/v1/files', {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${openaiApiKey}`,
-                  },
-                  body: formData,
-                });
-                
-                if (uploadResponse.ok) {
-                  const uploadData = await uploadResponse.json();
-                  documentAttachment = {
-                    file_id: uploadData.id,
-                    tools: [{ type: 'file_search' }]
-                  };
-                  console.log('🏢 [COMPANY-OS] Document uploaded to OpenAI, file ID:', uploadData.id);
-                } else {
-                  console.warn('🏢 [COMPANY-OS] Failed to upload document to OpenAI');
-                }
-              }
-            } catch (attachError) {
-              console.error('🏢 [COMPANY-OS] Error attaching document:', attachError);
-              // Don't fail if document attachment fails
-            }
+          if (uploadResponse.ok) {
+            const uploadData = await uploadResponse.json();
+            documentAttachment = {
+              file_id: uploadData.id,
+              tools: [{ type: 'file_search' }]
+            };
+            console.log('🏢 [COMPANY-OS] Document uploaded to OpenAI, file ID:', uploadData.id);
+          } else {
+            console.warn('🏢 [COMPANY-OS] Failed to upload document to OpenAI');
           }
         }
-        
-        console.log('🏢 [COMPANY-OS] CompanyOS context added, length:', companyOSContext.length);
-      } else {
-        console.log('🏢 [COMPANY-OS] No CompanyOS found for this company');
+      } catch (attachError) {
+        console.error('🏢 [COMPANY-OS] Error attaching document:', attachError);
       }
-    } catch (error) {
-      console.error('🏢 [COMPANY-OS] Error fetching CompanyOS:', error);
-      // Don't fail the request if CompanyOS fetch fails
     }
   }
 
   // Step 5: Prepare messages for AI
-  let systemPrompt = agentData.configuration?.instructions || 
-    `You are ${agentData.name}, a ${agentData.role}. ${agentData.description}`;
-  
-  // Add CompanyOS context first (highest priority)
-  if (companyOSContext) {
-    systemPrompt += `\n\n${companyOSContext}\n\nIMPORTANT: Use this CompanyOS context to inform all your responses. Align your tone, language, and recommendations with the company's brand voice, values, and strategic positioning. When relevant, reference the company's mission, value propositions, and customer pain points.`;
-  }
-  
-  // Add document search context if available
-  if (contextData) {
-    console.log('🔍 [DEBUG] Adding document context to system prompt, length:', contextData.length);
-    console.log('🔍 [DEBUG] Context data preview:', contextData.substring(0, 500) + '...');
-    systemPrompt += `\n\nRELEVANT DOCUMENTS: Use the following context information to answer the user's question. This context contains relevant documents and information that should be used to provide accurate, specific answers:\n\n${contextData}\n\nWhen answering, prioritize information from this context over general knowledge. If the context contains specific procedures, steps, or details, use them directly in your response.`;
-  } else {
-    console.log('🔍 [DEBUG] No document context available for system prompt');
-  }
-  
-  // Add channel context
+  let systemPrompt = buildAssistantPrompt({
+    agent: {
+      displayName: agentData.name,
+      personaInstructions: agentData.system_instructions || agentData.configuration?.instructions,
+      responseStructure: agentData.configuration?.response_structure,
+      specialtyLabel: agentData.configuration?.specialty_label,
+      role: agentData.role,
+      description: agentData.description
+    },
+    context: dynamicContext.tieredContext,
+    userQuery: message,
+    toolContext: toolContext || undefined
+  });
+
   systemPrompt += '\n\nYou are responding in a channel conversation. Be conversational and helpful.';
 
   // Prepare final messages with last 12 channel messages
@@ -1147,12 +937,14 @@ ${companyOS.raw_scraped_text}
     }
   }
 
+  const contextUsedFlag = dynamicContext.contextUsed || !!toolContext;
+
   return {
     response: assistantResponse,
     analysis: {
       ...analysis,
       tool_results: toolResults,
-      context_used: !!contextData
+      context_used: contextUsedFlag
     },
     content_type: contentType,
     tool_results_data: toolResultsData

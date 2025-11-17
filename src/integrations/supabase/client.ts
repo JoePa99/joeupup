@@ -4,6 +4,7 @@ import type { Database } from './types';
 
 const envSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : undefined);
 const envSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : undefined);
+const envSupabaseFunctionsUrl = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_FUNCTIONS_URL : undefined);
 
 if (!envSupabaseUrl || !envSupabaseAnonKey) {
   throw new Error('Supabase environment variables are not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
@@ -20,5 +21,10 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  functions: envSupabaseFunctionsUrl
+    ? {
+        url: envSupabaseFunctionsUrl,
+      }
+    : undefined,
 });

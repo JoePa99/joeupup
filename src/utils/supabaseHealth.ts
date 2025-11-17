@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, SUPABASE_URL } from '@/integrations/supabase/client';
 
 export interface SupabaseHealthMetrics {
   connectionStatus: 'healthy' | 'degraded' | 'down';
@@ -403,8 +403,6 @@ function formatBytes(bytes: number, decimals = 2): string {
  * Get Supabase project URL and environment info
  */
 export function getSupabaseProjectInfo() {
-  // Get URL from environment or Supabase client instance
-  const SUPABASE_URL = "https://chaeznzfvbgrpzvxwvyu.supabase.co";
   const projectRef = SUPABASE_URL.split('//')[1]?.split('.')[0] || 'unknown';
 
   return {

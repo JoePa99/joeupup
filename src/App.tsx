@@ -21,6 +21,7 @@ import AdminCompanies from "./pages/AdminCompanies";
 import AdminDocuments from "./pages/AdminDocuments";
 import AdminConsultations from "./pages/AdminConsultations";
 import CompanyConsultations from "./pages/CompanyConsultations";
+import ContextHub from "./pages/ContextHub";
 import ClientDashboard from "./pages/ClientDashboard";
 import ClientDashboardLayout from "./pages/ClientDashboardLayout";
 import ClientDetail from "./pages/ClientDetail";
@@ -207,17 +208,25 @@ const App = () => (
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="/consultations" 
+            <Route
+              path="/consultations"
               element={
                 <CompanyAdminProtectedRoute>
                   <CompanyConsultations />
                 </CompanyAdminProtectedRoute>
-              } 
+              }
+            />
+            <Route
+              path="/context-hub"
+              element={
+                <CompanyAdminProtectedRoute>
+                  <ContextHub />
+                </CompanyAdminProtectedRoute>
+              }
             />
             {/* Usage route moved to /client-dashboard/usage */}
-            <Route 
-              path="/billing" 
+            <Route
+              path="/billing"
               element={
                 <CompanyAdminProtectedRoute>
                   <Billing />

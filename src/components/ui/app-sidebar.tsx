@@ -414,6 +414,14 @@ export function AppSidebar() {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
+                    <NavLink to="/context-hub" className="flex items-center space-x-2">
+                      <DocumentTextIcon className="h-4 w-4" />
+                      {!collapsed && <span>Context Hub</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
                     <NavLink to="/company-agents" className="flex items-center space-x-2">
                       <CpuChipIcon className="h-4 w-4" />
                       {!collapsed && <span>Company Agents</span>}

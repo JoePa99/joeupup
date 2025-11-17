@@ -1,8 +1,9 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ReactNode, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePlatformAdmin } from "@/hooks/use-platform-admin";
+import { Button } from "@/components/ui/button";
 
 interface CompanyAdminProtectedRouteProps {
   children: ReactNode;
@@ -18,6 +19,12 @@ export function CompanyAdminProtectedRoute({
   const [userRole, setUserRole] = useState<string | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Check if user has admin role OR is a platform admin
+  const isCompanyAdmin = userRole === 'admin';
+  const isPlatformAdmin = platformAdminData?.success && platformAdminData?.isAdmin;
+  const shouldBlockAccess = !loading && !roleLoading && !isCheckingAdmin && !!user && !isCompanyAdmin && !isPlatformAdmin;
 
   useEffect(() => {
     if (user?.id) {
@@ -50,6 +57,13 @@ export function CompanyAdminProtectedRoute({
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    if (shouldBlockAccess) {
+      const timeout = setTimeout(() => navigate('/welcome', { replace: true }), 2500);
+      return () => clearTimeout(timeout);
+    }
+  }, [navigate, shouldBlockAccess]);
+
   // Show loading while checking authentication, role, and platform admin status
   if (loading || roleLoading || isCheckingAdmin) {
     return (
@@ -64,31 +78,27 @@ export function CompanyAdminProtectedRoute({
     return <Navigate to="/login" replace />;
   }
 
-  // Check if user has admin role OR is a platform admin
-  const isCompanyAdmin = userRole === 'admin';
-  const isPlatformAdmin = platformAdminData?.success && platformAdminData?.isAdmin;
-  
-  // Debug logging
-  console.log('CompanyAdminProtectedRoute Debug:', {
-    userRole,
-    isCompanyAdmin,
-    platformAdminData,
-    isPlatformAdmin,
-    finalAccess: isCompanyAdmin || isPlatformAdmin
-  });
-  
-  if (!isCompanyAdmin && !isPlatformAdmin) {
+  if (shouldBlockAccess) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-4">Access Denied</h1>
-          <p className="text-text-secondary mb-6">
-            You need administrator privileges to access this section.
-          </p>
-          <p className="text-sm text-text-secondary mb-4">
-            Debug: Role={userRole}, Platform Admin={JSON.stringify(platformAdminData)}
-          </p>
-          <Navigate to="/client-dashboard" replace />
+        <div className="max-w-md w-full space-y-6 rounded-xl border bg-card p-8 text-center shadow-sm">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-primary">Admins only</p>
+            <h1 className="text-2xl font-semibold text-foreground">You need admin access</h1>
+            <p className="text-muted-foreground">
+              This area is reserved for company administrators. If you think you should have access, reach out to your
+              workspace admin.
+            </p>
+            <p className="text-xs text-muted-foreground">We’ll redirect you to your home view in a moment.</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button variant="outline" onClick={() => navigate(-1)}>
+              Go back
+            </Button>
+            <Button onClick={() => navigate('/welcome')}>
+              Go to home
+            </Button>
+          </div>
         </div>
       </div>
     );

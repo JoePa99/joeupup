@@ -1,21 +1,33 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
-const corsHeaders = {
+const baseCorsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Max-Age': '86400',
 };
 
 const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = {}) => {
-  const origin = req.headers.get('origin') || '*';
+  const origin = req.headers.get('origin');
+  const fallbackOrigin = Deno.env.get('CORS_FALLBACK_ORIGIN') || '*';
+  const allowOrigin = origin || fallbackOrigin;
+
+  const dynamicHeaders: Record<string, string> = {
+    ...baseCorsHeaders,
+    'Access-Control-Allow-Origin': allowOrigin,
+  };
+
+  if (origin) {
+    dynamicHeaders['Vary'] = 'Origin';
+  }
+
+  if (allowOrigin !== '*') {
+    dynamicHeaders['Access-Control-Allow-Credentials'] = 'true';
+  }
 
   return {
-    ...corsHeaders,
-    'Access-Control-Allow-Origin': origin,
-    'Vary': 'Origin',
+    ...dynamicHeaders,
     ...extraHeaders,
   };
 };

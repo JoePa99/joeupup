@@ -45,6 +45,7 @@ import Privacy from "./pages/Privacy";
 import Usage from "./pages/Usage";
 import Billing from "./pages/Billing";
 import AdminUsageManagement from "./pages/AdminUsageManagement";
+import ContextHub from "./pages/ContextHub";
 
 const queryClient = new QueryClient();
 
@@ -119,16 +120,24 @@ const App = () => (
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="/company-agents" 
+            <Route
+              path="/company-agents"
               element={
                 <ProtectedRoute requireOnboarding>
                   <CompanyAgents />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/documents" 
+            <Route
+              path="/context-hub"
+              element={
+                <ProtectedRoute requireOnboarding>
+                  <ContextHub />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/documents"
               element={
                 <ProtectedRoute requireOnboarding>
                   <Documents />

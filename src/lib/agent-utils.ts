@@ -13,6 +13,11 @@ export interface AgentConfig {
   status: 'active' | 'training' | 'inactive' | 'paused';
   configuration: {
     instructions?: string;
+    context_scopes?: {
+      company_os?: boolean;
+      shared_kb?: boolean;
+      agent_kb?: boolean;
+    };
     [key: string]: any;
   };
   company_id: string;

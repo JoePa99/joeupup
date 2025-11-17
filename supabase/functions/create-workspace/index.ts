@@ -8,6 +8,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// RESOLVED: Kept the dynamic CORS helper function from the 'codex' branch
 const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = {}) => {
   const origin = req.headers.get('origin');
   const fallbackOrigin = Deno.env.get('CORS_FALLBACK_ORIGIN') || '*';
@@ -34,6 +35,7 @@ const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = 
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
+    // RESOLVED: Updated to use the new helper function
     return new Response('ok', { status: 200, headers: createCorsHeaders(req) });
   }
 

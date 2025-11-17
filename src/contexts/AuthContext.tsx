@@ -168,28 +168,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Create company and link profile atomically using RPC function
         const { data: companyResult, error: companyError } = await (supabase as any)
-          .rpc('create_company_and_link_profile', { 
+          .rpc('create_company_and_link_profile', {
             p_company_name: companyName,
             p_user_id: data.user.id
           });
 
+        let companyId: string | null = null;
+
         if (companyError) {
-          console.error('Error creating company:', companyError);
-          throw new Error(`Failed to create company: ${companyError.message}`);
-        }
+          const isMissingRpc = companyError.message?.includes('schema cache');
 
-        if (!companyResult || (companyResult as any[]).length === 0) {
-          throw new Error('Company creation returned no data');
-        }
+          if (!isMissingRpc) {
+            console.error('Error creating company:', companyError);
+            throw new Error(`Failed to create company: ${companyError.message}`);
+          }
 
-        const company = (companyResult as any[])[0];
+          console.warn('RPC create_company_and_link_profile missing, using fallback flow.');
+
+          const { data: fallbackCompany, error: companyInsertError } = await supabase
+            .from('companies')
+            .insert({ name: companyName })
+            .select('id')
+            .single();
+
+          if (companyInsertError) {
+            console.error('Error creating company via fallback:', companyInsertError);
+            throw new Error(`Failed to create company: ${companyInsertError.message}`);
+          }
+
+          companyId = fallbackCompany?.id ?? null;
+
+          if (!companyId) {
+            throw new Error('Company creation fallback returned no id');
+          }
+
+          const { error: profileUpdateError } = await supabase
+            .from('profiles')
+            .update({
+              company_id: companyId,
+              role: 'admin',
+            })
+            .eq('id', data.user.id);
+
+          if (profileUpdateError) {
+            console.error('Error linking profile via fallback:', profileUpdateError);
+            throw new Error(`Failed to link profile: ${profileUpdateError.message}`);
+          }
+        } else {
+          if (!companyResult || (companyResult as any[]).length === 0) {
+            throw new Error('Company creation returned no data');
+          }
+
+          const company = (companyResult as any[])[0];
+          companyId = company?.company_id || company?.id || null;
+
+          if (!companyId) {
+            throw new Error('Company creation returned an invalid id');
+          }
+        }
 
         // Create initial onboarding session
         const { error: onboardingError } = await supabase
           .from('onboarding_sessions')
           .insert([{
             user_id: data.user.id,
-            company_id: company.id,
+            company_id: companyId,
             status: 'in_progress',
             current_step: 1,
           }]);

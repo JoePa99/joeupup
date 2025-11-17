@@ -5,15 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { AgentFormData, AgentFormFields } from "./AgentFormFields";
 import { AgentToolManager } from "./AgentToolManager";
 import { ToolStatusIndicators } from "./ToolStatusIndicators";
-import { Bot, Plus, Edit, Trash2, Play, Pause, Settings, Loader2, RefreshCw, MessageSquare, Wrench, Maximize2 } from "lucide-react";
+import { Bot, Plus, Edit, Trash2, Loader2, Wrench } from "lucide-react";
 interface Agent {
   id: string;
   name: string;
@@ -33,19 +29,6 @@ interface Agent {
     name: string;
     description: string;
   };
-}
-interface AgentFormData {
-  name: string;
-  description: string;
-  role: string;
-  nickname: string;
-  status: 'active' | 'training' | 'inactive' | 'paused';
-  systemInstructions: string;
-  agent_type_id?: string;
-  ai_provider: string;
-  ai_model: string;
-  max_tokens: number;
-  web_access: boolean;
 }
 export function AgentManager() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -428,146 +411,13 @@ export function AgentManager() {
             <DialogHeader>
               <DialogTitle>Create New Agent</DialogTitle>
             </DialogHeader>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 py-4">
-              {/* Left Column - Configuration */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground">Configuration</h3>
-                <div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="systemInstructions">System Instructions</Label>
-                    <Button variant="ghost" size="sm" onClick={openInstructionsEditor}>
-                      <Maximize2 className="mr-1 h-4 w-4" /> Expand
-                    </Button>
-                  </div>
-                  <Textarea 
-                    id="systemInstructions" 
-                    value={formData.systemInstructions} 
-                    onChange={e => setFormData({
-                      ...formData,
-                      systemInstructions: e.target.value
-                    })} 
-                    placeholder="Enter the exact instructions that will be sent to the OpenAI assistant. This defines how the agent will behave and respond."
-                    rows={6}
-                    className="min-h-[120px]"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ai_provider">AI Provider</Label>
-                  <Select value={formData.ai_provider} onValueChange={(value) => {
-                    const newProvider = value;
-                    const newModel = getModelOptions(newProvider)[0]?.value || 'gpt-4o-mini';
-                    setFormData({
-                      ...formData,
-                      ai_provider: newProvider,
-                      ai_model: newModel
-                    });
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
-                      <SelectItem value="google">Google</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="ai_model">AI Model</Label>
-                  <Select value={formData.ai_model} onValueChange={(value) => setFormData({
-                    ...formData,
-                    ai_model: value
-                  })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      {getModelOptions(formData.ai_provider).map((model) => (
-                        <SelectItem key={model.value} value={model.value}>
-                          {model.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="max_tokens">Max Tokens</Label>
-                  <Input 
-                    id="max_tokens" 
-                    type="number" 
-                    value={formData.max_tokens} 
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      max_tokens: parseInt(e.target.value) || 2000
-                    })} 
-                    placeholder="2000" 
-                    min="100"
-                    max="128000"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="web_access">Enable Web Access</Label>
-                  <Switch 
-                    id="web_access"
-                    checked={formData.web_access}
-                    onCheckedChange={(checked) => setFormData({
-                      ...formData,
-                      web_access: checked
-                    })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select value={formData.status} onValueChange={(value: any) => setFormData({
-                  ...formData,
-                  status: value
-                })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      <SelectItem value="training">Training</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="paused">Paused</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Right Column - Agent Details */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground">Agent Details</h3>
-                <div>
-                  <Label htmlFor="name">Name</Label>
-                  <Input id="name" value={formData.name} onChange={e => setFormData({
-                  ...formData,
-                  name: e.target.value
-                })} placeholder="Agent name" />
-                </div>
-                <div>
-                  <Label htmlFor="role">Role</Label>
-                  <Input id="role" value={formData.role} onChange={e => setFormData({
-                  ...formData,
-                  role: e.target.value
-                })} placeholder="e.g., Customer Support, Sales Assistant" />
-                </div>
-                <div>
-                  <Label htmlFor="nickname">Nickname</Label>
-                  <Input id="nickname" value={formData.nickname} onChange={e => setFormData({
-                  ...formData,
-                  nickname: e.target.value
-                })} placeholder="e.g., @marketing-bot, @sales-assistant" />
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea id="description" value={formData.description} onChange={e => setFormData({
-                  ...formData,
-                  description: e.target.value
-                })} placeholder="Agent description and capabilities" rows={4} />
-                </div>
-              </div>
-            </div>
+            <AgentFormFields
+              formData={formData}
+              setFormData={setFormData}
+              getModelOptions={getModelOptions}
+              openInstructionsEditor={openInstructionsEditor}
+              idPrefix="create"
+            />
             <div className="flex justify-end space-x-2">
               <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                 Cancel
@@ -587,15 +437,38 @@ export function AgentManager() {
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="flex items-start">
-                  
+
                   <div>
                     <CardTitle className="text-lg">{agent.name}</CardTitle>
                     <p className="text-sm text-muted-foreground">{agent.role}</p>
                   </div>
                 </div>
-                <Badge variant={getStatusBadgeVariant(agent.status)}>
-                  {agent.status}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant={getStatusBadgeVariant(agent.status)}>
+                    {agent.status}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => openEditDialog(agent)}
+                    title="Edit agent"
+                  >
+                    <Edit className="h-4 w-4" />
+                    <span className="sr-only">Edit agent</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleDeleteAgent(agent)}
+                    disabled={deleteAgentMutation.isPending}
+                    title="Delete agent"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete agent</span>
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -658,146 +531,13 @@ export function AgentManager() {
           <DialogHeader>
             <DialogTitle>Edit Agent</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 py-4">
-            {/* Left Column - Configuration */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground">Configuration</h3>
-              <div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="edit-systemInstructions">System Instructions</Label>
-                  <Button variant="ghost" size="sm" onClick={openInstructionsEditor}>
-                    <Maximize2 className="mr-1 h-4 w-4" /> Expand
-                  </Button>
-                </div>
-                <Textarea 
-                  id="edit-systemInstructions" 
-                  value={formData.systemInstructions} 
-                  onChange={e => setFormData({
-                    ...formData,
-                    systemInstructions: e.target.value
-                  })} 
-                  placeholder="Enter the exact instructions that will be sent to the OpenAI assistant. This defines how the agent will behave and respond."
-                  rows={6}
-                  className="min-h-[120px]"
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit-ai_provider">AI Provider</Label>
-                <Select value={formData.ai_provider} onValueChange={(value) => {
-                  const newProvider = value;
-                  const newModel = getModelOptions(newProvider)[0]?.value || 'gpt-4o-mini';
-                  setFormData({
-                    ...formData,
-                    ai_provider: newProvider,
-                    ai_model: newModel
-                  });
-                }}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    <SelectItem value="google">Google</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="edit-ai_model">AI Model</Label>
-                <Select value={formData.ai_model} onValueChange={(value) => setFormData({
-                  ...formData,
-                  ai_model: value
-                })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
-                    {getModelOptions(formData.ai_provider).map((model) => (
-                      <SelectItem key={model.value} value={model.value}>
-                        {model.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="edit-max_tokens">Max Tokens</Label>
-                <Input 
-                  id="edit-max_tokens" 
-                  type="number" 
-                  value={formData.max_tokens} 
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    max_tokens: parseInt(e.target.value) || 2000
-                  })} 
-                  placeholder="2000" 
-                  min="100"
-                  max="128000"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="edit-web_access">Enable Web Access</Label>
-                <Switch 
-                  id="edit-web_access"
-                  checked={formData.web_access}
-                  onCheckedChange={(checked) => setFormData({
-                    ...formData,
-                    web_access: checked
-                  })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit-status">Status</Label>
-                <Select value={formData.status} onValueChange={(value: any) => setFormData({
-                ...formData,
-                status: value
-              })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      <SelectItem value="training">Training</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="paused">Paused</SelectItem>
-                    </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Right Column - Agent Details */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground">Agent Details</h3>
-              <div>
-                <Label htmlFor="edit-name">Name</Label>
-                <Input id="edit-name" value={formData.name} onChange={e => setFormData({
-                ...formData,
-                name: e.target.value
-              })} placeholder="Agent name" />
-              </div>
-              <div>
-                <Label htmlFor="edit-role">Role</Label>
-                <Input id="edit-role" value={formData.role} onChange={e => setFormData({
-                ...formData,
-                role: e.target.value
-              })} placeholder="e.g., Customer Support, Sales Assistant" />
-              </div>
-              <div>
-                <Label htmlFor="edit-nickname">Nickname</Label>
-                <Input id="edit-nickname" value={formData.nickname} onChange={e => setFormData({
-                ...formData,
-                nickname: e.target.value
-              })} placeholder="e.g., @marketing-bot, @sales-assistant" />
-              </div>
-              <div>
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea id="edit-description" value={formData.description} onChange={e => setFormData({
-                ...formData,
-                description: e.target.value
-              })} placeholder="Agent description and capabilities" rows={4} />
-              </div>
-            </div>
-          </div>
+          <AgentFormFields
+            formData={formData}
+            setFormData={setFormData}
+            getModelOptions={getModelOptions}
+            openInstructionsEditor={openInstructionsEditor}
+            idPrefix="edit"
+          />
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancel

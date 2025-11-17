@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
-import { buildAssistantPrompt, buildDynamicContext, expandQuery, parseUserQuery } from '../_shared/dynamic-context.ts';
+import { buildAssistantPrompt, buildDynamicContext, expandQuery, parseUserQuery, TieredContext } from '../_shared/dynamic-context.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -385,7 +385,7 @@ async function processChannelAgentMessage(
   supabaseClient: any,
   attachments: any[] = [],
   isChainedCall: boolean = false
-): Promise<{ response: string; analysis: any; content_type?: string; tool_results_data?: any }> {
+): Promise<{ response: string; analysis: any; content_type?: string; tool_results_data?: any; context_metadata?: any }> {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
   if (!openaiApiKey) {
     throw new Error('OpenAI API key not configured');
@@ -681,6 +681,22 @@ async function processChannelAgentMessage(
     openaiApiKey
   });
 
+  const buildContextCitations = (context: TieredContext) => {
+    const tiers: (keyof TieredContext)[] = ['companyOS', 'agentDocs', 'playbooks', 'keywords'];
+    return tiers.flatMap(tierKey =>
+      (context?.[tierKey] || []).map((chunk: any) => ({
+        id: chunk.id,
+        tier: chunk.tier || tierKey,
+        content: chunk.content,
+        relevanceScore: chunk.relevanceScore,
+        metadata: {
+          ...chunk.metadata,
+          source: chunk.metadata?.source || tierKey
+        }
+      }))
+    );
+  };
+
   let documentAttachment: any = null;
   const sourceDocument = dynamicContext.attachmentSource;
 
@@ -938,6 +954,14 @@ async function processChannelAgentMessage(
   }
 
   const contextUsedFlag = dynamicContext.contextUsed || !!toolContext;
+  const contextCitations = buildContextCitations(dynamicContext.tieredContext);
+  const contextMetadata = {
+    context_used: contextUsedFlag,
+    citations: contextCitations,
+    attachment_source: dynamicContext.attachmentSource,
+    document_summary: dynamicContext.documentSummary,
+    structured_summary: dynamicContext.tieredContext?.structuredSummary
+  };
 
   return {
     response: assistantResponse,
@@ -947,7 +971,8 @@ async function processChannelAgentMessage(
       context_used: contextUsedFlag
     },
     content_type: contentType,
-    tool_results_data: toolResultsData
+    tool_results_data: toolResultsData,
+    context_metadata: contextMetadata
   };
 }
 
@@ -1025,7 +1050,8 @@ serve(async (req) => {
         content_type: validContentType,
         tool_results: result.tool_results_data,
         agent_id: agent_id,
-        mention_type: 'direct_mention'
+        mention_type: 'direct_mention',
+        content_metadata: result.context_metadata
       });
 
     if (insertError) {
@@ -1066,11 +1092,12 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ 
-      success: true, 
+      success: true,
       response: result.response,
       analysis: result.analysis,
       content_type: result.content_type,
-      tool_results: result.tool_results_data
+      tool_results: result.tool_results_data,
+      context_metadata: result.context_metadata
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

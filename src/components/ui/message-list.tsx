@@ -8,6 +8,13 @@ interface FileAttachment {
   size: number;
   type: string;
 }
+interface Citation {
+  id: string;
+  tier: 'companyOS' | 'agentDocs' | 'playbooks' | 'keywords' | string;
+  content: string;
+  relevanceScore?: number;
+  metadata?: Record<string, any>;
+}
 interface MessageData {
   id: string;
   role: 'user' | 'assistant';
@@ -43,6 +50,11 @@ interface MessageData {
     attachment_path?: string;
     attachment_name?: string;
     attachment_type?: string;
+    citations?: Citation[];
+    context_used?: boolean;
+    attachment_source?: Record<string, any> | null;
+    document_summary?: string;
+    structured_summary?: string;
   };
   conversation_id?: string;
   chain_index?: number;

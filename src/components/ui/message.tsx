@@ -83,6 +83,17 @@ interface MessageProps {
     attachment_path?: string;
     attachment_name?: string;
     attachment_type?: string;
+    citations?: {
+      id: string;
+      tier: 'companyOS' | 'agentDocs' | 'playbooks' | 'keywords' | string;
+      content: string;
+      relevanceScore?: number;
+      metadata?: Record<string, any>;
+    }[];
+    context_used?: boolean;
+    attachment_source?: Record<string, any> | null;
+    document_summary?: string;
+    structured_summary?: string;
   };
   conversation_id?: string;
   agent_id?: string;
@@ -144,6 +155,20 @@ export function Message({
       return `${member.first_name} ${member.last_name}`;
     }
     return member.email;
+  };
+
+  const tierLabels: Record<string, string> = {
+    companyOS: 'Company OS',
+    agentDocs: 'Knowledge Base',
+    playbooks: 'Playbooks',
+    keywords: 'Keywords'
+  };
+
+  const citations = content_metadata?.citations || [];
+  const contextSummary = content_metadata?.document_summary || content_metadata?.structured_summary;
+
+  const getCitationLink = (metadata?: Record<string, any>) => {
+    return metadata?.url || metadata?.link || metadata?.source_url || metadata?.path;
   };
 
   // Check if current user is mentioned
@@ -581,7 +606,58 @@ export function Message({
             {renderParsedContent(content || '')}
           </div>
         )}
-        
+
+        {(citations.length > 0 || contextSummary) && (
+          <div className="mt-3 border border-border rounded-lg bg-muted/30 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Context Sources</div>
+              {content_metadata?.context_used === false && (
+                <Badge variant="outline" className="text-[10px]">Not used in reply</Badge>
+              )}
+            </div>
+
+            {contextSummary && (
+              <p className="text-sm text-foreground/80 leading-relaxed">
+                {contextSummary}
+              </p>
+            )}
+
+            {citations.map((citation, index) => {
+              const link = getCitationLink(citation.metadata);
+              return (
+                <div key={`${citation.id}-${index}`} className="space-y-1 rounded-md bg-background p-2 border border-border/60">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {tierLabels[citation.tier] || citation.tier}
+                      </Badge>
+                      {citation.metadata?.source && (
+                        <span className="text-xs text-muted-foreground">{citation.metadata.source}</span>
+                      )}
+                    </div>
+                    {link && (
+                      <a
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        View source
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-sm text-foreground leading-relaxed break-words">
+                    {citation.content}
+                  </p>
+                  {citation.metadata?.section && (
+                    <p className="text-xs text-muted-foreground">Section: {citation.metadata.section}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* File Attachments */}
         {attachments && attachments.length > 0 && (
           <div className="mt-3 space-y-3 w-full max-w-[280px] min-w-0 overflow-hidden">

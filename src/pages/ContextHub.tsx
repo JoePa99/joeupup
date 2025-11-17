@@ -49,6 +49,25 @@ interface AgentType {
   name: string;
 }
 
+interface AgentRecord {
+  id: string;
+  name: string;
+  role: string;
+  description: string | null;
+  status: string;
+  agent_type_id?: string;
+  configuration?: {
+    context_scopes?: {
+      company_os?: boolean;
+      shared_kb?: boolean;
+      agent_kb?: boolean;
+    };
+  };
+  agent_types?: {
+    name: string;
+  } | null;
+}
+
 interface AssistantForm {
   name: string;
   role: string;
@@ -161,7 +180,7 @@ export default function ContextHub() {
     }
   });
 
-  const { data: agentsData, isLoading: agentsLoading } = useQuery({
+  const { data: agentsData, isLoading: agentsLoading } = useQuery<AgentRecord[]>({
     queryKey: ["context-agents", companyId],
     enabled: !!companyId,
     queryFn: async () => {
@@ -177,7 +196,7 @@ export default function ContextHub() {
     [assistantForm.name, assistantForm.role]
   );
 
-  const agentIds = useMemo(() => (agentsData || []).map((agent: any) => agent.id), [agentsData]);
+  const agentIds = useMemo(() => (agentsData || []).map((agent) => agent.id), [agentsData]);
 
   const { data: agentDocumentCounts, isLoading: agentDocLoading } = useQuery({
     queryKey: ["agent-document-counts", agentIds.join("-")],
@@ -246,7 +265,7 @@ export default function ContextHub() {
       const { success, error, data } = await createDatabaseAgent({
         name: assistantForm.name.trim(),
         role: defaultRole.trim(),
-        description: assistantForm.description.trim(),
+        description: assistantForm.description.trim() || null,
         status: "training",
         configuration: {
           instructions: assistantForm.instructions,
@@ -516,7 +535,7 @@ export default function ContextHub() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {(agentsData || []).map((agent: any) => (
+                  {(agentsData || []).map((agent) => (
                     <Card key={agent.id} className="border shadow-none">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm flex items-center gap-2">
@@ -524,9 +543,20 @@ export default function ContextHub() {
                           {agent.name}
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-1 text-xs text-muted-foreground">
-                        <p className="font-medium text-foreground">{agent.role}</p>
-                        <p>Status: <span className="font-semibold text-foreground">{agent.status}</span></p>
+                      <CardContent className="space-y-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-foreground">{agent.role}</p>
+                          {agent.agent_types?.name && <Badge variant="outline">{agent.agent_types.name}</Badge>}
+                        </div>
+                        <p>
+                          Status: <span className="font-semibold text-foreground">{agent.status}</span>
+                        </p>
+                        {agent.description && <p className="text-foreground/80">{agent.description}</p>}
+                        <div className="flex flex-wrap gap-2">
+                          {agent.configuration?.context_scopes?.company_os && <Badge variant="secondary">Company OS</Badge>}
+                          {agent.configuration?.context_scopes?.shared_kb && <Badge variant="secondary">Shared KB</Badge>}
+                          {agent.configuration?.context_scopes?.agent_kb && <Badge variant="secondary">Agent KB</Badge>}
+                        </div>
                         <p>Scoped docs: {agentDocumentCounts?.[agent.id] ?? 0}</p>
                       </CardContent>
                     </Card>

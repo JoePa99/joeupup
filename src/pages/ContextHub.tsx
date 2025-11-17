@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanyOS } from "@/hooks/useCompanyOS";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,10 +44,17 @@ interface Profile {
   first_name?: string | null;
 }
 
+interface AgentType {
+  id: string;
+  name: string;
+}
+
 interface AssistantForm {
   name: string;
   role: string;
   description: string;
+  instructions: string;
+  agentTypeId: string;
   model: string;
   temperature: number;
   webSearch: boolean;
@@ -60,19 +68,30 @@ export default function ContextHub() {
   const queryClient = useQueryClient();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [agentTypes, setAgentTypes] = useState<AgentType[]>([]);
+  const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
+  const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [activeAgentForUpload, setActiveAgentForUpload] = useState<string | null>(null);
   const [assistantForm, setAssistantForm] = useState<AssistantForm>({
     name: "",
     role: "",
     description: "",
+    instructions: "",
+    agentTypeId: "",
     model: "gpt-4o-mini",
     temperature: 0.4,
     webSearch: true,
     imageGen: true,
     deepResearch: false
+  });
+  const [contextScopes, setContextScopes] = useState({
+    company_os: true,
+    shared_kb: true,
+    agent_kb: true
   });
 
   useEffect(() => {
@@ -100,6 +119,25 @@ export default function ContextHub() {
 
     fetchProfile();
   }, [user?.id, toast]);
+
+  useEffect(() => {
+    const fetchAgentTypes = async () => {
+      if (!user?.id) return;
+
+      const { data, error } = await supabase.from("agent_types").select("id, name").order("name");
+      if (error) {
+        console.error("Error loading agent types for context hub:", error);
+        return;
+      }
+
+      setAgentTypes(data || []);
+      if (data && data.length > 0) {
+        setAssistantForm((prev) => ({ ...prev, agentTypeId: prev.agentTypeId || data[0].id }));
+      }
+    };
+
+    fetchAgentTypes();
+  }, [user?.id]);
 
   const companyId = profile?.company_id || undefined;
   const { data: companyOS, isLoading: osLoading, refetch: refetchCompanyOS } = useCompanyOS(companyId);
@@ -134,6 +172,11 @@ export default function ContextHub() {
     }
   });
 
+  const defaultRole = useMemo(
+    () => (assistantForm.role || assistantForm.name ? assistantForm.role || assistantForm.name : "context_agent"),
+    [assistantForm.name, assistantForm.role]
+  );
+
   const agentIds = useMemo(() => (agentsData || []).map((agent: any) => agent.id), [agentsData]);
 
   const { data: agentDocumentCounts, isLoading: agentDocLoading } = useQuery({
@@ -154,63 +197,99 @@ export default function ContextHub() {
     }
   });
 
-  const handleCreateAssistant = async () => {
-    if (!companyId) return;
-    if (!assistantForm.name.trim() || !assistantForm.role.trim()) {
-      toast({
-        title: "Name and role required",
-        description: "Give your assistant a clear name and role to continue.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const { success, error } = await createDatabaseAgent({
-      name: assistantForm.name.trim(),
-      role: assistantForm.role.trim(),
-      description: assistantForm.description.trim(),
-      status: "active",
-      configuration: {
-        ai_provider: "openai",
-        ai_model: assistantForm.model,
-        temperature: assistantForm.temperature,
-        tools: {
-          web_search: assistantForm.webSearch,
-          image_generation: assistantForm.imageGen,
-          deep_research: assistantForm.deepResearch
-        }
-      },
-      company_id: companyId,
-      agent_type_id: null,
-      is_default: false,
-      system_instructions: `You are ${assistantForm.name}, ${assistantForm.role}. ${assistantForm.description}`,
-      created_by: user?.id || null,
-    } as any);
-
-    if (!success) {
-      toast({
-        title: "Could not create assistant",
-        description: error || "An unexpected error occurred",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    toast({
-      title: "Assistant ready",
-      description: "We provisioned the assistant and connected the retrieval stack."
-    });
-    setAssistantDialogOpen(false);
+  const resetAssistantForm = () => {
     setAssistantForm({
       name: "",
       role: "",
       description: "",
+      instructions: "",
+      agentTypeId: agentTypes[0]?.id || "",
       model: "gpt-4o-mini",
       temperature: 0.4,
       webSearch: true,
       imageGen: true,
       deepResearch: false
     });
+    setContextScopes({ company_os: true, shared_kb: true, agent_kb: true });
+    setCreatedAgentId(null);
+    setUploadRefreshKey((key) => key + 1);
+  };
+
+  const handleAssistantDialogChange = (open: boolean) => {
+    setAssistantDialogOpen(open);
+    if (!open) {
+      resetAssistantForm();
+    }
+  };
+
+  const handleCreateAssistant = async () => {
+    if (!companyId) {
+      toast({
+        title: "Missing company context",
+        description: "We couldn't determine your company. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!assistantForm.name.trim() || !assistantForm.agentTypeId) {
+      toast({
+        title: "Name and type required",
+        description: "Add a name and choose an agent type before creating the assistant.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { success, error, data } = await createDatabaseAgent({
+        name: assistantForm.name.trim(),
+        role: defaultRole.trim(),
+        description: assistantForm.description.trim(),
+        status: "training",
+        configuration: {
+          instructions: assistantForm.instructions,
+          context_scopes: contextScopes,
+          ai_provider: "openai",
+          ai_model: assistantForm.model,
+          temperature: assistantForm.temperature,
+          tools: {
+            web_search: assistantForm.webSearch,
+            image_generation: assistantForm.imageGen,
+            deep_research: assistantForm.deepResearch
+          }
+        },
+        company_id: companyId,
+        agent_type_id: assistantForm.agentTypeId,
+        is_default: false,
+        created_by: user?.id || null
+      } as any);
+
+      if (!success) {
+        throw new Error(error || "An unexpected error occurred");
+      }
+
+      setCreatedAgentId((data as any)?.id || null);
+      toast({
+        title: "Assistant created",
+        description: "Upload starter documents below or close this dialog to continue."
+      });
+      queryClient.invalidateQueries({ queryKey: ["context-agents", companyId] });
+    } catch (error: any) {
+      console.error("Error creating assistant:", error);
+      toast({
+        title: "Could not create assistant",
+        description: error?.message || "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUploadComplete = () => {
+    queryClient.invalidateQueries({ queryKey: ["agent-document-counts", agentIds.join("-")] });
     queryClient.invalidateQueries({ queryKey: ["context-agents", companyId] });
   };
 
@@ -505,106 +584,199 @@ export default function ContextHub() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={assistantDialogOpen} onOpenChange={setAssistantDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={assistantDialogOpen} onOpenChange={handleAssistantDialogChange}>
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>Create context-first assistant</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <Label htmlFor="assistant-name">Name</Label>
-                <Input
-                  id="assistant-name"
-                  value={assistantForm.name}
-                  onChange={(e) => setAssistantForm({ ...assistantForm, name: e.target.value })}
-                  placeholder="Business Analyst"
-                />
-              </div>
-              <div>
-                <Label htmlFor="assistant-role">Role</Label>
-                <Input
-                  id="assistant-role"
-                  value={assistantForm.role}
-                  onChange={(e) => setAssistantForm({ ...assistantForm, role: e.target.value })}
-                  placeholder="Margin expansion strategist"
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="assistant-description">Purpose</Label>
-              <Textarea
-                id="assistant-description"
-                value={assistantForm.description}
-                onChange={(e) => setAssistantForm({ ...assistantForm, description: e.target.value })}
-                placeholder="Helps finance leaders decide on pricing, costs, and product mix using Company OS and scoped docs."
-                rows={3}
-              />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <Label htmlFor="assistant-model">Model</Label>
-                <select
-                  id="assistant-model"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={assistantForm.model}
-                  onChange={(e) => setAssistantForm({ ...assistantForm, model: e.target.value })}
-                >
-                  <option value="gpt-4o-mini">GPT-4o mini (fast)</option>
-                  <option value="gpt-4o">GPT-4o</option>
-                  <option value="o3-2025-04-16">o3 (reasoning)</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="assistant-temp">Temperature</Label>
-                <Input
-                  id="assistant-temp"
-                  type="number"
-                  step={0.1}
-                  min={0}
-                  max={1}
-                  value={assistantForm.temperature}
-                  onChange={(e) => setAssistantForm({ ...assistantForm, temperature: parseFloat(e.target.value) })}
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" /> Web search
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="assistant-name">Name</Label>
+                  <Input
+                    id="assistant-name"
+                    value={assistantForm.name}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, name: e.target.value })}
+                    placeholder="Support Assistant"
+                  />
                 </div>
-                <Switch
-                  checked={assistantForm.webSearch}
-                  onCheckedChange={(checked) => setAssistantForm({ ...assistantForm, webSearch: checked })}
-                />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <Upload className="h-4 w-4 text-primary" /> Image generation
+                <div>
+                  <Label htmlFor="assistant-role">Role</Label>
+                  <Input
+                    id="assistant-role"
+                    value={assistantForm.role}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, role: e.target.value })}
+                    placeholder="support_specialist"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Defaults to the name if left blank.</p>
                 </div>
-                <Switch
-                  checked={assistantForm.imageGen}
-                  onCheckedChange={(checked) => setAssistantForm({ ...assistantForm, imageGen: checked })}
-                />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <Brain className="h-4 w-4 text-primary" /> Deep research
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="assistant-type">Agent type</Label>
+                  <select
+                    id="assistant-type"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={assistantForm.agentTypeId}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, agentTypeId: e.target.value })}
+                  >
+                    <option value="" disabled>
+                      Select an agent type
+                    </option>
+                    {agentTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <Switch
-                  checked={assistantForm.deepResearch}
-                  onCheckedChange={(checked) => setAssistantForm({ ...assistantForm, deepResearch: checked })}
-                />
-              </label>
+                <div>
+                  <Label htmlFor="assistant-model">Model</Label>
+                  <select
+                    id="assistant-model"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={assistantForm.model}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, model: e.target.value })}
+                  >
+                    <option value="gpt-4o-mini">GPT-4o mini (fast)</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="o3-2025-04-16">o3 (reasoning)</option>
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="assistant-description">Purpose</Label>
+                  <Textarea
+                    id="assistant-description"
+                    value={assistantForm.description}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, description: e.target.value })}
+                    placeholder="Short summary of this assistant's responsibilities"
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="assistant-instructions">System instructions</Label>
+                  <Textarea
+                    id="assistant-instructions"
+                    value={assistantForm.instructions}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, instructions: e.target.value })}
+                    placeholder="Outline how this assistant should respond to users"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="assistant-temp">Temperature</Label>
+                  <Input
+                    id="assistant-temp"
+                    type="number"
+                    step={0.1}
+                    min={0}
+                    max={1}
+                    value={assistantForm.temperature}
+                    onChange={(e) => setAssistantForm({ ...assistantForm, temperature: parseFloat(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" /> Web search
+                  </div>
+                  <Switch
+                    checked={assistantForm.webSearch}
+                    onCheckedChange={(checked) => setAssistantForm({ ...assistantForm, webSearch: checked })}
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Upload className="h-4 w-4 text-primary" /> Image generation
+                  </div>
+                  <Switch
+                    checked={assistantForm.imageGen}
+                    onCheckedChange={(checked) => setAssistantForm({ ...assistantForm, imageGen: checked })}
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-4 w-4 text-primary" /> Deep research
+                  </div>
+                  <Switch
+                    checked={assistantForm.deepResearch}
+                    onCheckedChange={(checked) => setAssistantForm({ ...assistantForm, deepResearch: checked })}
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => handleAssistantDialogChange(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateAssistant} disabled={!companyId || isSaving || !!createdAgentId}>
+                  {isSaving ? "Creating..." : createdAgentId ? "Assistant ready" : "Create assistant"}
+                </Button>
+              </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAssistantDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreateAssistant} disabled={!companyId}>
-                Create assistant
-              </Button>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <p className="text-sm font-medium">Context scopes</p>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="scope-company-os"
+                    checked={contextScopes.company_os}
+                    onCheckedChange={(checked) =>
+                      setContextScopes((prev) => ({ ...prev, company_os: Boolean(checked) }))
+                    }
+                  />
+                  <Label htmlFor="scope-company-os">Grant access to Company OS</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="scope-shared-kb"
+                    checked={contextScopes.shared_kb}
+                    onCheckedChange={(checked) =>
+                      setContextScopes((prev) => ({ ...prev, shared_kb: Boolean(checked) }))
+                    }
+                  />
+                  <Label htmlFor="scope-shared-kb">Allow shared knowledge base documents</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="scope-agent-kb"
+                    checked={contextScopes.agent_kb}
+                    onCheckedChange={(checked) =>
+                      setContextScopes((prev) => ({ ...prev, agent_kb: Boolean(checked) }))
+                    }
+                  />
+                  <Label htmlFor="scope-agent-kb">Enable this assistant's private knowledge base</Label>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <p className="text-sm font-medium">Seed documents</p>
+                {createdAgentId ? (
+                  <DocumentUploadArea
+                    key={`${createdAgentId}-${uploadRefreshKey}`}
+                    agentId={createdAgentId}
+                    companyId={companyId}
+                    onUploadComplete={handleUploadComplete}
+                  />
+                ) : (
+                  <div className="text-sm text-muted-foreground space-y-2">
+                    <p>Create the assistant to unlock uploads.</p>
+                    <p>We'll automatically route uploaded files to this assistant's knowledge base once it's ready.</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </DialogContent>

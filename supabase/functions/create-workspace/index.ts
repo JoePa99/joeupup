@@ -22,7 +22,7 @@ const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = 
     dynamicHeaders['Vary'] = 'Origin';
   }
 
-  if (allowOrigin !== '*') {
+  if (allowOrigin !== '*' && origin) {
     dynamicHeaders['Access-Control-Allow-Credentials'] = 'true';
   }
 

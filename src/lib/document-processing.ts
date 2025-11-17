@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/integrations/supabase/client";
 
 export interface DocumentProcessingResult {
   success: boolean;
@@ -35,16 +35,12 @@ export async function processDocumentForEmbeddings(
       throw new Error('No active session found');
     }
 
-    // Use the already configured Supabase client URL and key
-    const supabaseUrl = "https://chaeznzfvbgrpzvxwvyu.supabase.co";
-    const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoYWV6bnpmdmJncnB6dnh3dnl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxOTIwMTUsImV4cCI6MjA3MDc2ODAxNX0.tninczi1BMTk6G6knEMN8QKPMaAbFZjRkxg71CINcTY";
-    
     console.log('Processing document for embeddings:', {
       documentArchiveId,
       companyId,
       userId,
       agentId,
-      supabaseUrl,
+      supabaseUrl: SUPABASE_URL,
       hasSession: !!session,
       hasAccessToken: !!session.access_token
     });
@@ -59,12 +55,12 @@ export async function processDocumentForEmbeddings(
       requestBody.agent_id = agentId;
     }
     
-    const response = await fetch(`${supabaseUrl}/functions/v1/process-documents-embeddings`, {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/process-documents-embeddings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
-        'apikey': supabaseAnonKey,
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify(requestBody),
     });
@@ -254,10 +250,6 @@ export async function embedInlineDocument(
       throw new Error('No active session found');
     }
 
-    // Use the already configured Supabase client URL and key
-    const supabaseUrl = "https://chaeznzfvbgrpzvxwvyu.supabase.co";
-    const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoYWV6bnpmdmJncnB6dnh3dnl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxOTIwMTUsImV4cCI6MjA3MDc2ODAxNX0.tninczi1BMTk6G6knEMN8QKPMaAbFZjRkxg71CINcTY";
-    
     console.log('Embedding inline document:', {
       companyId,
       userId,
@@ -267,13 +259,13 @@ export async function embedInlineDocument(
       hasSession: !!session,
       hasAccessToken: !!session.access_token
     });
-    
-    const response = await fetch(`${supabaseUrl}/functions/v1/embed-inline-document`, {
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/embed-inline-document`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
-        'apikey': supabaseAnonKey,
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify({
         company_id: companyId,
@@ -336,23 +328,21 @@ export async function embedInlineDocument(
  */
 export async function testEdgeFunctionAccess(): Promise<boolean> {
   try {
-    const supabaseUrl = "https://chaeznzfvbgrpzvxwvyu.supabase.co";
-    
     console.log('Testing Edge Function accessibility...');
-    
+
     // First try an OPTIONS request to check CORS
-    const optionsResponse = await fetch(`${supabaseUrl}/functions/v1/process-documents-embeddings`, {
+    const optionsResponse = await fetch(`${SUPABASE_URL}/functions/v1/process-documents-embeddings`, {
       method: 'OPTIONS',
       headers: {
         'Content-Type': 'application/json',
       },
     });
-    
+
     console.log('OPTIONS response status:', optionsResponse.status);
     console.log('OPTIONS response headers:', Object.fromEntries(optionsResponse.headers.entries()));
-    
+
     // Then try a GET request to see if the function responds
-    const getResponse = await fetch(`${supabaseUrl}/functions/v1/process-documents-embeddings`, {
+    const getResponse = await fetch(`${SUPABASE_URL}/functions/v1/process-documents-embeddings`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

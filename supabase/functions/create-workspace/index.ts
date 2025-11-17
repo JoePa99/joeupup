@@ -4,17 +4,31 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Max-Age': '86400',
+};
+
+const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = {}) => {
+  const origin = req.headers.get('origin') || '*';
+
+  return {
+    ...corsHeaders,
+    'Access-Control-Allow-Origin': origin,
+    'Vary': 'Origin',
+    ...extraHeaders,
+  };
 };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: createCorsHeaders(req) });
   }
 
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 405, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
     );
   }
 
@@ -32,7 +46,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
       );
     }
 
@@ -42,7 +56,7 @@ serve(async (req) => {
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
       );
     }
 
@@ -61,7 +75,7 @@ serve(async (req) => {
     if (!workspaceName) {
       return new Response(
         JSON.stringify({ error: 'Workspace name is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
       );
     }
 
@@ -135,14 +149,14 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, companyId }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
     );
   } catch (error) {
     console.error('Error creating workspace:', error);
     const message = error instanceof Error ? error.message : 'Unexpected error creating workspace';
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
     );
   }
 });

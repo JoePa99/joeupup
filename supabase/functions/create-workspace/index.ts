@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
-const corsHeaders = {
+const defaultCorsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -11,12 +11,18 @@ const corsHeaders = {
 // RESOLVED: Kept the dynamic CORS helper function from the 'codex' branch
 const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = {}) => {
   const origin = req.headers.get('origin');
+  const requestedHeaders = req.headers.get('access-control-request-headers');
   const fallbackOrigin = Deno.env.get('CORS_FALLBACK_ORIGIN') || '*';
   const allowOrigin = origin || fallbackOrigin;
 
+  const allowHeaders = requestedHeaders
+    ? requestedHeaders
+    : defaultCorsHeaders['Access-Control-Allow-Headers'];
+
   const dynamicHeaders: Record<string, string> = {
-    ...corsHeaders,
+    ...defaultCorsHeaders,
     'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': allowHeaders,
   };
 
   if (origin) {
@@ -36,7 +42,8 @@ const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     // RESOLVED: Updated to use the new helper function
-    return new Response('ok', { status: 200, headers: createCorsHeaders(req) });
+    const headers = createCorsHeaders(req);
+    return new Response(null, { status: 204, headers });
   }
 
   if (req.method !== 'POST') {

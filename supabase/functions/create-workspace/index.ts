@@ -8,15 +8,41 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// RESOLVED: Kept the dynamic CORS helper function from the 'codex' branch
+const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = {}) => {
+  const origin = req.headers.get('origin');
+  const fallbackOrigin = Deno.env.get('CORS_FALLBACK_ORIGIN') || '*';
+  const allowOrigin = origin || fallbackOrigin;
+
+  const dynamicHeaders: Record<string, string> = {
+    ...corsHeaders,
+    'Access-Control-Allow-Origin': allowOrigin,
+  };
+
+  if (origin) {
+    dynamicHeaders['Vary'] = 'Origin';
+  }
+
+  if (allowOrigin !== '*' && origin) {
+    dynamicHeaders['Access-Control-Allow-Credentials'] = 'true';
+  }
+
+  return {
+    ...dynamicHeaders,
+    ...extraHeaders,
+  };
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 200, headers: corsHeaders });
+    // RESOLVED: Updated to use the new helper function
+    return new Response('ok', { status: 200, headers: createCorsHeaders(req) });
   }
 
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 405, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
     );
   }
 
@@ -34,7 +60,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
       );
     }
 
@@ -44,7 +70,7 @@ serve(async (req) => {
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
       );
     }
 
@@ -63,7 +89,7 @@ serve(async (req) => {
     if (!workspaceName) {
       return new Response(
         JSON.stringify({ error: 'Workspace name is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
       );
     }
 
@@ -137,14 +163,14 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, companyId }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
     );
   } catch (error) {
     console.error('Error creating workspace:', error);
     const message = error instanceof Error ? error.message : 'Unexpected error creating workspace';
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: createCorsHeaders(req, { 'Content-Type': 'application/json' }) }
     );
   }
 });

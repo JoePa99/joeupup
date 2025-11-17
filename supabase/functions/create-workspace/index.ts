@@ -42,8 +42,10 @@ const createCorsHeaders = (req: Request, extraHeaders: Record<string, string> = 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     // RESOLVED: Updated to use the new helper function
-    const headers = createCorsHeaders(req);
-    return new Response(null, { status: 204, headers });
+    // Return an explicit 200 response for preflight checks so browsers treat the
+    // response as "ok" and do not block the actual request because of CORS.
+    const headers = createCorsHeaders(req, { 'Content-Type': 'application/json' });
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers });
   }
 
   if (req.method !== 'POST') {

@@ -55,7 +55,7 @@ Deployed successfully!
 First, verify your `.env` file has these variables (without the VITE_ prefix for Node scripts):
 
 ```env
-VITE_SUPABASE_URL=https://chaeznzfvbgrpzvxwvyu.supabase.co
+VITE_SUPABASE_URL=https://burikvqttbmhahtjnplq.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
@@ -95,7 +95,7 @@ Your `.env` file might not have the service role key. Add this line:
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 ```
 
-Get it from: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/settings/api
+Get it from: https://supabase.com/dashboard/project/burikvqttbmhahtjnplq/settings/api
 
 ### "user_usage table does not exist"
 

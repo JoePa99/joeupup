@@ -161,7 +161,7 @@ useEffect(() => {
 ### 1. Apply the Database Migration
 
 Go to your Supabase Dashboard SQL Editor:
-https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/sql
+https://supabase.com/dashboard/project/burikvqttbmhahtjnplq/sql
 
 Paste and run the contents of:
 `supabase/migrations/20250121000000_fix_channel_delete_notification.sql`

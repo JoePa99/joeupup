@@ -18,13 +18,13 @@ You need to complete 4 steps to fix this:
 Create a `.env` file in your project root (if you don't have one already) with your Supabase credentials:
 
 ```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_URL=https://burikvqttbmhahtjnplq.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 ```
 
 **Where to find these:**
-- Go to: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/settings/api
+- Go to: https://supabase.com/dashboard/project/burikvqttbmhahtjnplq/settings/api
 - Copy the Project URL → `VITE_SUPABASE_URL`
 - Copy the anon/public key → `VITE_SUPABASE_ANON_KEY`  
 - Copy the service_role key → `SUPABASE_SERVICE_ROLE_KEY`

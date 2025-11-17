@@ -4,7 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://chaeznzfvbgrpzvxwvyu.supabase.co';
+const SUPABASE_URL = 'https://burikvqttbmhahtjnplq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoYWV6bnpmdmJncnB6dnh3dnl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzYwMjY4MzEsImV4cCI6MjA1MTYwMjgzMX0.LfBqJ8QvJ8QvJ8QvJ8QvJ8QvJ8QvJ8QvJ8QvJ8QvJ8Q'; // This should be safe to use
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

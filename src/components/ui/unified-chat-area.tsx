@@ -23,6 +23,13 @@ interface FileAttachment {
   size: number;
   type: string;
 }
+interface Citation {
+  id: string;
+  tier: 'companyOS' | 'agentDocs' | 'playbooks' | 'keywords' | string;
+  content: string;
+  relevanceScore?: number;
+  metadata?: Record<string, any>;
+}
 
 interface Agent {
   id: string;
@@ -72,6 +79,19 @@ interface Message {
   chain_index?: number;
   parent_message_id?: string;
   agent_chain?: string[];
+  content_metadata?: {
+    error?: boolean;
+    error_message?: string;
+    can_retry?: boolean;
+    attachment_path?: string;
+    attachment_name?: string;
+    attachment_type?: string;
+    citations?: Citation[];
+    context_used?: boolean;
+    attachment_source?: Record<string, any> | null;
+    document_summary?: string;
+    structured_summary?: string;
+  };
 }
 
 interface Conversation {
@@ -138,35 +158,35 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
 
   // Helper function to deduplicate messages by ID and client_message_id
   const dedupeMessages = (messages: Message[]): Message[] => {
-    const seen = new Set<string>();
     const seenClientIds = new Set<string>();
-    const result: Message[] = [];
-    
+    const orderedResults: Message[] = [];
+
     for (const msg of messages) {
-      // Skip if we've already seen this exact ID
-      if (seen.has(msg.id)) continue;
-      
       // If this is a server message with client_message_id, remove any temp messages with that client ID
       if (msg.client_message_id && !msg.id.startsWith('temp-')) {
         seenClientIds.add(msg.client_message_id);
-        // Remove any temp messages with this client_message_id
-        const filteredResult = result.filter(m => 
-          !(m.id.startsWith('temp-') && m.client_message_id === msg.client_message_id)
-        );
-        result.length = 0;
-        result.push(...filteredResult);
+        for (let i = orderedResults.length - 1; i >= 0; i--) {
+          const existing = orderedResults[i];
+          if (existing.id.startsWith('temp-') && existing.client_message_id === msg.client_message_id) {
+            orderedResults.splice(i, 1);
+          }
+        }
       }
-      
+
       // Skip temp messages if we already have a server version with the same client_message_id
       if (msg.id.startsWith('temp-') && msg.client_message_id && seenClientIds.has(msg.client_message_id)) {
         continue;
       }
-      
-      seen.add(msg.id);
-      result.push(msg);
+
+      const existingIndex = orderedResults.findIndex(existing => existing.id === msg.id);
+      if (existingIndex >= 0) {
+        orderedResults[existingIndex] = { ...orderedResults[existingIndex], ...msg };
+      } else {
+        orderedResults.push(msg);
+      }
     }
-    
-    return result;
+
+    return orderedResults;
   };
 
   useEffect(() => {
@@ -854,7 +874,8 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
         content_type: (msg.content_type as 'text' | 'image_generation' | 'web_research' | 'mixed') || 'text',
         attachments: (msg.attachments as unknown as FileAttachment[]) || [],
         tool_results: msg.tool_results as any,
-        client_message_id: (msg as any).client_message_id
+        client_message_id: (msg as any).client_message_id,
+        content_metadata: (msg as any).content_metadata
       }));
       setMessages(dedupeMessages(messages));
     } catch (error) {
@@ -878,7 +899,8 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
         content_type: (msg.content_type as 'text' | 'image_generation' | 'web_research' | 'mixed') || 'text',
         attachments: (msg.attachments as unknown as FileAttachment[]) || [],
         tool_results: msg.tool_results as any,
-        client_message_id: (msg as any).client_message_id
+        client_message_id: (msg as any).client_message_id,
+        content_metadata: (msg as any).content_metadata
       }));
       setMessages(dedupeMessages(messages));
     } catch (error) {

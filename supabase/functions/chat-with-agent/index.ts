@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
-import { buildAssistantPrompt, buildDynamicContext, expandQuery, parseUserQuery } from '../_shared/dynamic-context.ts';
+import { buildAssistantPrompt, buildDynamicContext, expandQuery, parseUserQuery, TieredContext } from '../_shared/dynamic-context.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -188,7 +188,7 @@ async function processUserMessage(
   supabaseClient: any,
   userId: string,
   attachments: any[] = []
-): Promise<{ response: string; analysis: any; content_type?: string; tool_results_data?: any }> {
+): Promise<{ response: string; analysis: any; content_type?: string; tool_results_data?: any; context_metadata?: any }> {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
   if (!openaiApiKey) {
     throw new Error('OpenAI API key not configured');
@@ -542,6 +542,22 @@ async function processUserMessage(
     openaiApiKey
   });
 
+  const buildContextCitations = (context: TieredContext) => {
+    const tiers: (keyof TieredContext)[] = ['companyOS', 'agentDocs', 'playbooks', 'keywords'];
+    return tiers.flatMap(tierKey =>
+      (context?.[tierKey] || []).map((chunk: any) => ({
+        id: chunk.id,
+        tier: chunk.tier || tierKey,
+        content: chunk.content,
+        relevanceScore: chunk.relevanceScore,
+        metadata: {
+          ...chunk.metadata,
+          source: chunk.metadata?.source || tierKey
+        }
+      }))
+    );
+  };
+
   let documentAttachment: any = null;
   const sourceDocument = dynamicContext.attachmentSource;
 
@@ -806,6 +822,14 @@ async function processUserMessage(
   }
 
   const contextUsedFlag = dynamicContext.contextUsed || !!toolContext;
+  const contextCitations = buildContextCitations(dynamicContext.tieredContext);
+  const contextMetadata = {
+    context_used: contextUsedFlag,
+    citations: contextCitations,
+    attachment_source: dynamicContext.attachmentSource,
+    document_summary: dynamicContext.documentSummary,
+    structured_summary: dynamicContext.tieredContext?.structuredSummary
+  };
 
   return {
     response: assistantResponse,
@@ -815,7 +839,8 @@ async function processUserMessage(
       context_used: contextUsedFlag
     },
     content_type: contentType,
-    tool_results_data: toolResultsData
+    tool_results_data: toolResultsData,
+    context_metadata: contextMetadata
   };
 }
 
@@ -912,7 +937,8 @@ serve(async (req) => {
         tool_results: result.tool_results_data,
         message_type: 'direct',
         mention_type: 'direct_conversation',
-        agent_id: agent_id
+        agent_id: agent_id,
+        content_metadata: result.context_metadata
       });
     
     if (saveError) {
@@ -933,7 +959,8 @@ serve(async (req) => {
       response: result.response,
       analysis: result.analysis,
       content_type: result.content_type,
-      tool_results: result.tool_results_data
+      tool_results: result.tool_results_data,
+      context_metadata: result.context_metadata
     };
 
     console.log('Chat response generated successfully');

@@ -102,34 +102,88 @@ serve(async (req) => {
       );
     }
 
-    const { data: profile, error: profileError } = await supabaseAdmin
+    // Try to get the profile, but don't fail if it doesn't exist
+    const { data: profileData, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('id, company_id, role')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !profile) {
-      throw new Error(profileError?.message || 'Unable to load profile');
+    console.log('Profile lookup result:', { profileData, profileError });
+
+    let profile = profileData;
+
+    // If profile doesn't exist, create it
+    if (!profile) {
+      console.log('Profile not found, creating new profile for user:', user.id);
+      const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email,
+          role: 'user',
+        })
+        .select('id, company_id, role')
+        .single();
+
+      if (createError || !newProfile) {
+        throw new Error(`Failed to create profile: ${createError?.message || 'Unknown error'}`);
+      }
+
+      profile = newProfile;
+      console.log('Created new profile:', profile);
+    }
+
+    if (profileError) {
+      throw new Error(profileError.message);
     }
 
     let companyId = profile.company_id;
 
     if (!companyId) {
+      console.log('Creating new company with name:', workspaceName);
+
+      // Try using the RPC function first
       const { data: companyResult, error: companyError } = await supabaseAdmin
         .rpc('create_company_and_link_profile', {
           p_company_name: workspaceName,
           p_user_id: user.id
         });
 
-      if (companyError) {
-        console.error('create_company_and_link_profile error:', companyError);
-        throw new Error(companyError.message);
-      }
+      console.log('RPC result:', { companyResult, companyError });
 
-      const createdCompany = Array.isArray(companyResult)
-        ? companyResult[0]
-        : companyResult;
-      companyId = createdCompany?.company_id || createdCompany?.id || null;
+      if (companyError) {
+        console.error('RPC failed, trying direct insert:', companyError);
+
+        // Fallback: Create company directly using service role
+        const { data: newCompany, error: insertError } = await supabaseAdmin
+          .from('companies')
+          .insert({ name: workspaceName })
+          .select('id')
+          .single();
+
+        if (insertError || !newCompany) {
+          throw new Error(`Failed to create company: ${insertError?.message || 'Unknown error'}`);
+        }
+
+        companyId = newCompany.id;
+        console.log('Company created via direct insert:', companyId);
+      } else {
+        if (!companyResult) {
+          throw new Error('RPC returned no data');
+        }
+
+        const createdCompany = Array.isArray(companyResult)
+          ? companyResult[0]
+          : companyResult;
+
+        console.log('Created company via RPC:', createdCompany);
+        companyId = createdCompany?.company_id || createdCompany?.id || null;
+
+        if (!companyId) {
+          throw new Error(`Unable to extract company ID from result: ${JSON.stringify(createdCompany)}`);
+        }
+      }
     }
 
     if (!companyId) {

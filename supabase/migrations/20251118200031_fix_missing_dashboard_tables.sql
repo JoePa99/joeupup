@@ -1,11 +1,12 @@
 -- Fix Missing Database Tables
 -- ===========================
 -- This migration adds missing tables that are preventing dashboard from loading
+-- FIXED: Removed dependencies on tables that may not exist (channels, chat_messages)
 
 -- 1. CREATE NOTIFICATIONS TABLE AND RELATED TABLES
 -- =================================================
 
--- Notifications table
+-- Notifications table (without foreign key constraints to potentially missing tables)
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -13,13 +14,23 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   title text NOT NULL,
   message text NOT NULL,
   data jsonb DEFAULT '{}',
-  channel_id uuid REFERENCES channels(id) ON DELETE CASCADE,
-  message_id uuid REFERENCES chat_messages(id) ON DELETE CASCADE,
-  agent_id uuid REFERENCES agents(id) ON DELETE CASCADE,
+  channel_id uuid,  -- No FK constraint - table may not exist yet
+  message_id uuid,  -- No FK constraint - table may not exist yet
+  agent_id uuid,    -- No FK constraint - will add later if agents table exists
   created_by uuid REFERENCES profiles(id) ON DELETE CASCADE,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+-- Add foreign key constraint for agent_id only if agents table exists
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'agents') THEN
+        ALTER TABLE public.notifications
+        ADD CONSTRAINT fk_notifications_agent_id
+        FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 -- Notification reads table
 CREATE TABLE IF NOT EXISTS public.notification_reads (
@@ -30,18 +41,21 @@ CREATE TABLE IF NOT EXISTS public.notification_reads (
   UNIQUE(notification_id, user_id)
 );
 
--- User presence table
+-- User presence table (without foreign key constraints to potentially missing tables)
 CREATE TABLE IF NOT EXISTS public.user_presence (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  channel_id uuid REFERENCES channels(id) ON DELETE CASCADE,
-  conversation_id uuid REFERENCES chat_conversations(id) ON DELETE CASCADE,
+  channel_id uuid,        -- No FK constraint - table may not exist yet
+  conversation_id uuid,   -- No FK constraint - table may not exist yet
   is_active boolean DEFAULT true,
   last_seen timestamptz DEFAULT now(),
   created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE(user_id, channel_id, conversation_id)
+  updated_at timestamptz DEFAULT now()
 );
+
+-- Add unique constraint that handles NULLs properly
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_presence_unique
+ON public.user_presence (user_id, COALESCE(channel_id, '00000000-0000-0000-0000-000000000000'::uuid), COALESCE(conversation_id, '00000000-0000-0000-0000-000000000000'::uuid));
 
 -- 2. CREATE CONSULTATION_REQUESTS TABLE
 -- ======================================
@@ -278,135 +292,8 @@ CREATE INDEX IF NOT EXISTS idx_consultation_requests_status ON consultation_requ
 CREATE INDEX IF NOT EXISTS idx_playbook_sections_company_id ON playbook_sections(company_id);
 CREATE INDEX IF NOT EXISTS idx_playbook_sections_status ON playbook_sections(status);
 
--- 8. CREATE HELPER FUNCTIONS
--- ===========================
-
--- Function to create agent message notifications
-CREATE OR REPLACE FUNCTION public.create_agent_message_notification()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  target_user_id uuid;
-  agent_name text;
-  channel_name text;
-  conversation_user_id uuid;
-  is_user_present boolean;
-  notification_data jsonb;
-BEGIN
-  -- Only process assistant messages (agent messages)
-  IF NEW.role != 'assistant' THEN
-    RETURN NEW;
-  END IF;
-
-  -- Get agent name
-  SELECT name INTO agent_name
-  FROM agents
-  WHERE id = NEW.agent_id;
-
-  -- Handle channel messages
-  IF NEW.channel_id IS NOT NULL THEN
-    SELECT name INTO channel_name
-    FROM channels
-    WHERE id = NEW.channel_id;
-
-    FOR target_user_id IN
-      SELECT cm.user_id
-      FROM channel_members cm
-      WHERE cm.channel_id = NEW.channel_id
-    LOOP
-      SELECT EXISTS(
-        SELECT 1 FROM user_presence up
-        WHERE up.user_id = target_user_id
-        AND up.channel_id = NEW.channel_id
-        AND up.is_active = true
-        AND up.last_seen > now() - interval '5 minutes'
-      ) INTO is_user_present;
-
-      IF NOT is_user_present THEN
-        notification_data := jsonb_build_object(
-          'agent_name', COALESCE(agent_name, 'AI Agent'),
-          'channel_name', COALESCE(channel_name, 'Channel'),
-          'message_preview', LEFT(NEW.content, 100),
-          'jump_url', '/client-dashboard?agent=' || NEW.agent_id
-        );
-
-        INSERT INTO notifications (
-          user_id,
-          type,
-          title,
-          message,
-          data,
-          channel_id,
-          message_id,
-          agent_id
-        ) VALUES (
-          target_user_id,
-          'agent_response',
-          COALESCE(agent_name, 'AI Agent') || ' responded in #' || COALESCE(channel_name, 'channel'),
-          '"' || LEFT(NEW.content, 100) || '"',
-          notification_data,
-          NEW.channel_id,
-          NEW.id,
-          NEW.agent_id
-        );
-      END IF;
-    END LOOP;
-
-  ELSIF NEW.conversation_id IS NOT NULL THEN
-    SELECT user_id INTO conversation_user_id
-    FROM chat_conversations
-    WHERE id = NEW.conversation_id;
-
-    IF conversation_user_id IS NOT NULL THEN
-      SELECT EXISTS(
-        SELECT 1 FROM user_presence up
-        WHERE up.user_id = conversation_user_id
-        AND up.conversation_id = NEW.conversation_id
-        AND up.is_active = true
-        AND up.last_seen > now() - interval '5 minutes'
-      ) INTO is_user_present;
-
-      IF NOT is_user_present THEN
-        notification_data := jsonb_build_object(
-          'agent_name', COALESCE(agent_name, 'AI Agent'),
-          'message_preview', LEFT(NEW.content, 100),
-          'jump_url', '/client-dashboard?agent=' || NEW.agent_id
-        );
-
-        INSERT INTO notifications (
-          user_id,
-          type,
-          title,
-          message,
-          data,
-          message_id,
-          agent_id
-        ) VALUES (
-          conversation_user_id,
-          'agent_response',
-          COALESCE(agent_name, 'AI Agent') || ' responded',
-          '"' || LEFT(NEW.content, 100) || '"',
-          notification_data,
-          NEW.id,
-          NEW.agent_id
-        );
-      END IF;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
--- Create trigger for agent message notifications
-DROP TRIGGER IF EXISTS trigger_agent_message_notification ON chat_messages;
-CREATE TRIGGER trigger_agent_message_notification
-  AFTER INSERT ON chat_messages
-  FOR EACH ROW
-  EXECUTE FUNCTION public.create_agent_message_notification();
+-- 8. CREATE HELPER FUNCTIONS (only if dependent tables exist)
+-- ============================================================
 
 -- Function to update user presence
 CREATE OR REPLACE FUNCTION public.update_user_presence(
@@ -422,11 +309,19 @@ AS $$
 BEGIN
   INSERT INTO user_presence (user_id, channel_id, conversation_id, is_active, last_seen)
   VALUES (p_user_id, p_channel_id, p_conversation_id, true, now())
-  ON CONFLICT (user_id, channel_id, conversation_id)
+  ON CONFLICT ON CONSTRAINT idx_user_presence_unique
   DO UPDATE SET
     is_active = true,
     last_seen = now(),
     updated_at = now();
+EXCEPTION
+  WHEN unique_violation THEN
+    -- Handle the unique violation by updating existing record
+    UPDATE user_presence
+    SET is_active = true, last_seen = now(), updated_at = now()
+    WHERE user_id = p_user_id
+    AND (channel_id = p_channel_id OR (channel_id IS NULL AND p_channel_id IS NULL))
+    AND (conversation_id = p_conversation_id OR (conversation_id IS NULL AND p_conversation_id IS NULL));
 END;
 $$;
 
@@ -449,3 +344,108 @@ BEGIN
   AND (conversation_id = p_conversation_id OR (conversation_id IS NULL AND p_conversation_id IS NULL));
 END;
 $$;
+
+-- Create agent message notification function (only if chat_messages table exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'chat_messages') THEN
+    EXECUTE $func$
+      CREATE OR REPLACE FUNCTION public.create_agent_message_notification()
+      RETURNS TRIGGER
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = public
+      AS $body$
+      DECLARE
+        target_user_id uuid;
+        agent_name text;
+        channel_name text;
+        conversation_user_id uuid;
+        is_user_present boolean;
+        notification_data jsonb;
+      BEGIN
+        -- Only process assistant messages (agent messages)
+        IF NEW.role != 'assistant' THEN
+          RETURN NEW;
+        END IF;
+
+        -- Get agent name if agents table exists
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'agents') THEN
+          SELECT name INTO agent_name FROM agents WHERE id = NEW.agent_id;
+        END IF;
+
+        -- Handle channel messages if channels table exists
+        IF NEW.channel_id IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'channels') THEN
+          SELECT name INTO channel_name FROM channels WHERE id = NEW.channel_id;
+
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'channel_members') THEN
+            FOR target_user_id IN
+              SELECT cm.user_id FROM channel_members cm WHERE cm.channel_id = NEW.channel_id
+            LOOP
+              SELECT EXISTS(
+                SELECT 1 FROM user_presence up
+                WHERE up.user_id = target_user_id AND up.channel_id = NEW.channel_id
+                AND up.is_active = true AND up.last_seen > now() - interval '5 minutes'
+              ) INTO is_user_present;
+
+              IF NOT is_user_present THEN
+                notification_data := jsonb_build_object(
+                  'agent_name', COALESCE(agent_name, 'AI Agent'),
+                  'channel_name', COALESCE(channel_name, 'Channel'),
+                  'message_preview', LEFT(NEW.content, 100),
+                  'jump_url', '/client-dashboard?agent=' || NEW.agent_id
+                );
+
+                INSERT INTO notifications (user_id, type, title, message, data, channel_id, message_id, agent_id)
+                VALUES (
+                  target_user_id, 'agent_response',
+                  COALESCE(agent_name, 'AI Agent') || ' responded in #' || COALESCE(channel_name, 'channel'),
+                  '"' || LEFT(NEW.content, 100) || '"',
+                  notification_data, NEW.channel_id, NEW.id, NEW.agent_id
+                );
+              END IF;
+            END LOOP;
+          END IF;
+
+        -- Handle direct conversation messages
+        ELSIF NEW.conversation_id IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'chat_conversations') THEN
+          SELECT user_id INTO conversation_user_id FROM chat_conversations WHERE id = NEW.conversation_id;
+
+          IF conversation_user_id IS NOT NULL THEN
+            SELECT EXISTS(
+              SELECT 1 FROM user_presence up
+              WHERE up.user_id = conversation_user_id AND up.conversation_id = NEW.conversation_id
+              AND up.is_active = true AND up.last_seen > now() - interval '5 minutes'
+            ) INTO is_user_present;
+
+            IF NOT is_user_present THEN
+              notification_data := jsonb_build_object(
+                'agent_name', COALESCE(agent_name, 'AI Agent'),
+                'message_preview', LEFT(NEW.content, 100),
+                'jump_url', '/client-dashboard?agent=' || NEW.agent_id
+              );
+
+              INSERT INTO notifications (user_id, type, title, message, data, message_id, agent_id)
+              VALUES (
+                conversation_user_id, 'agent_response',
+                COALESCE(agent_name, 'AI Agent') || ' responded',
+                '"' || LEFT(NEW.content, 100) || '"',
+                notification_data, NEW.id, NEW.agent_id
+              );
+            END IF;
+          END IF;
+        END IF;
+
+        RETURN NEW;
+      END;
+      $body$;
+
+      -- Create trigger for agent message notifications
+      DROP TRIGGER IF EXISTS trigger_agent_message_notification ON chat_messages;
+      CREATE TRIGGER trigger_agent_message_notification
+        AFTER INSERT ON chat_messages
+        FOR EACH ROW
+        EXECUTE FUNCTION public.create_agent_message_notification();
+    $func$;
+  END IF;
+END $$;

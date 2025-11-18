@@ -128,7 +128,14 @@ export default function WorkspaceCompanyOS() {
         body: { text, company_name: companyData?.name }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error from edge function:', error);
+        throw new Error(error.message || 'Failed to generate CompanyOS');
+      }
+
+      if (!data || !data.company_os) {
+        throw new Error('Invalid response from edge function');
+      }
 
       // Preview the generated data
       setManualData(data.company_os);
@@ -139,11 +146,13 @@ export default function WorkspaceCompanyOS() {
         description: "Review and edit the generated data before saving.",
       });
     } catch (error: any) {
+      console.error('Error generating CompanyOS from text:', error);
       toast({
         title: "Error generating CompanyOS",
-        description: error.message,
+        description: error.message || "Please try uploading a different document or use manual entry",
         variant: "destructive",
       });
+      // Don't crash, just show error
     }
   };
 
@@ -169,7 +178,14 @@ export default function WorkspaceCompanyOS() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error from research-company:', error);
+        throw new Error(error.message || 'Failed to research company');
+      }
+
+      if (!data || !data.company_os) {
+        throw new Error('Invalid response from research function');
+      }
 
       // Preview the generated data
       setManualData(data.company_os);
@@ -180,11 +196,14 @@ export default function WorkspaceCompanyOS() {
         description: "Review and edit the generated data before saving.",
       });
     } catch (error: any) {
+      console.error('Error researching company:', error);
       toast({
         title: "Error researching company",
-        description: error.message,
+        description: error.message || "Please try manual entry instead",
         variant: "destructive",
       });
+      // Don't crash, switch to manual mode
+      setActiveTab('manual');
     } finally {
       setResearching(false);
     }

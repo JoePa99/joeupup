@@ -70,7 +70,7 @@ export default function WorkspaceCompanyOS() {
   const fetchCompanyOS = async () => {
     try {
       const { data, error } = await supabase
-        .from('company_knowledge')
+        .from('company_os')
         .select('*')
         .eq('company_id', workspaceId)
         .single();
@@ -215,10 +215,11 @@ export default function WorkspaceCompanyOS() {
     try {
       // Upsert CompanyOS data
       const { error } = await supabase
-        .from('company_knowledge')
+        .from('company_os')
         .upsert({
           company_id: workspaceId,
           data: manualData,
+          status: 'completed',
           confidence_score: 0.85,
           extraction_method: activeTab === 'upload' ? 'pdf_extraction' :
                            activeTab === 'research' ? 'web_research' : 'manual_entry',

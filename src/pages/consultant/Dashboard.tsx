@@ -77,7 +77,7 @@ export default function ConsultantDashboard() {
 
           // Check if CompanyOS exists
           const { data: companyOSData } = await supabase
-            .from('company_knowledge')
+            .from('company_os')
             .select('id')
             .eq('company_id', companyId)
             .single();

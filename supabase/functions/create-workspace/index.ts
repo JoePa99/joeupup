@@ -191,7 +191,8 @@ serve(async (req) => {
       throw new Error('Unable to determine company ID after creation');
     }
 
-    await supabaseAdmin
+    // Update company with additional details
+    const { error: companyUpdateError } = await supabaseAdmin
       .from('companies')
       .update({
         name: workspaceName,
@@ -200,6 +201,12 @@ serve(async (req) => {
       })
       .eq('id', companyId);
 
+    if (companyUpdateError) {
+      console.error('Failed to update company:', companyUpdateError);
+      throw new Error(`Failed to update company: ${companyUpdateError.message}`);
+    }
+
+    // Update profile with company link and role
     const profileUpdates: Record<string, any> = {
       company_id: companyId,
       role: 'platform-admin',
@@ -208,12 +215,18 @@ serve(async (req) => {
     if (firstName !== null) profileUpdates.first_name = firstName;
     if (lastName !== null) profileUpdates.last_name = lastName;
 
-    await supabaseAdmin
+    const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
       .update(profileUpdates)
       .eq('id', user.id);
 
-    await supabaseAdmin
+    if (profileUpdateError) {
+      console.error('Failed to update profile:', profileUpdateError);
+      throw new Error(`Failed to update profile: ${profileUpdateError.message}`);
+    }
+
+    // Complete onboarding session
+    const { error: onboardingError } = await supabaseAdmin
       .from('onboarding_sessions')
       .upsert({
         user_id: user.id,
@@ -224,6 +237,11 @@ serve(async (req) => {
         completed_at: new Date().toISOString(),
         session_data: { workspaceName, onboardingPath: 'single_form' },
       }, { onConflict: 'user_id' });
+
+    if (onboardingError) {
+      console.error('Failed to update onboarding session:', onboardingError);
+      throw new Error(`Failed to update onboarding session: ${onboardingError.message}`);
+    }
 
     return new Response(
       JSON.stringify({ success: true, companyId }),

@@ -132,17 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', userId)
         .maybeSingle();
 
-      // If no onboarding row exists, check if user was invited
+      // If no onboarding row exists, mark as incomplete
       if (!data && !error) {
-        const { data: invitation } = await supabase
-          .from('team_invitations')
-          .select('id')
-          .eq('accepted_by', userId)
-          .eq('status', 'accepted')
-          .maybeSingle();
-        
-        // If user has accepted an invitation, skip onboarding
-        setIsOnboardingComplete(!!invitation);
+        setIsOnboardingComplete(false);
         return;
       }
       if (error) {

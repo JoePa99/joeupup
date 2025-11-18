@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { CompanyAdminProtectedRoute } from "@/components/auth/CompanyAdminProtectedRoute";
+import { ConsultantProtectedRoute } from "@/components/auth/ConsultantProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
@@ -46,6 +47,20 @@ import Usage from "./pages/Usage";
 import Billing from "./pages/Billing";
 import AdminUsageManagement from "./pages/AdminUsageManagement";
 import ContextHub from "./pages/ContextHub";
+
+// Consultant Portal Pages
+import ConsultantDashboard from "./pages/consultant/Dashboard";
+import CreateWorkspace from "./pages/consultant/CreateWorkspace";
+import WorkspaceCompanyOS from "./pages/consultant/WorkspaceCompanyOS";
+import WorkspaceAgents from "./pages/consultant/WorkspaceAgents";
+import CreateAgent from "./pages/consultant/CreateAgent";
+import AgentDetail from "./pages/consultant/AgentDetail";
+import AgentDocuments from "./pages/consultant/AgentDocuments";
+import WorkspacePlaybooks from "./pages/consultant/WorkspacePlaybooks";
+
+// Client Pages
+import WorkspacePending from "./pages/WorkspacePending";
+import PlaybookContribute from "./pages/PlaybookContribute";
 
 const queryClient = new QueryClient();
 
@@ -243,6 +258,91 @@ const App = () => (
             />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+
+            {/* Client Pages */}
+            <Route
+              path="/workspace-pending"
+              element={
+                <ProtectedRoute>
+                  <WorkspacePending />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/playbook/contribute"
+              element={
+                <ProtectedRoute requireOnboarding>
+                  <PlaybookContribute />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Consultant Portal Routes */}
+            <Route
+              path="/consultant-portal"
+              element={
+                <ConsultantProtectedRoute>
+                  <ConsultantDashboard />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/new"
+              element={
+                <ConsultantProtectedRoute>
+                  <CreateWorkspace />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/:workspaceId/company-os"
+              element={
+                <ConsultantProtectedRoute>
+                  <WorkspaceCompanyOS />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/:workspaceId/agents"
+              element={
+                <ConsultantProtectedRoute>
+                  <WorkspaceAgents />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/:workspaceId/agents/new"
+              element={
+                <ConsultantProtectedRoute>
+                  <CreateAgent />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/:workspaceId/agents/:agentId"
+              element={
+                <ConsultantProtectedRoute>
+                  <AgentDetail />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/:workspaceId/agents/:agentId/documents"
+              element={
+                <ConsultantProtectedRoute>
+                  <AgentDocuments />
+                </ConsultantProtectedRoute>
+              }
+            />
+            <Route
+              path="/consultant-portal/workspaces/:workspaceId/playbooks"
+              element={
+                <ConsultantProtectedRoute>
+                  <WorkspacePlaybooks />
+                </ConsultantProtectedRoute>
+              }
+            />
+
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

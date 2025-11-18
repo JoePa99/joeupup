@@ -197,7 +197,6 @@ serve(async (req) => {
       .update({
         name: workspaceName,
         domain: companyWebsite,
-        created_by: user.id,
       })
       .eq('id', companyId);
 

@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 
 // Configuration - update these values
-const SUPABASE_URL = 'https://burikvqttbmhahtjnplq.supabase.co';
+const SUPABASE_URL = 'https://mzqlkhysicqtrahllkng.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoYWV6bnpmdmJncnB6dnh3dnl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxOTIwMTUsImV4cCI6MjA3MDc2ODAxNX0.tninczi1BMTk6G6knEMN8QKPMaAbFZjRkxg71CINcTY';
 const USER_ID = '00000000-0000-0000-0000-000000000000'; // Using a placeholder UUID for testing
 const COMPANY_ID = null; // Optional: if you want to delete assistants for a specific company only

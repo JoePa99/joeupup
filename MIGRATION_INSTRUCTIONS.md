@@ -43,7 +43,7 @@ Your database needs ALL 117 migrations applied in chronological order. The migra
 
 2. **Link to your project**:
    ```bash
-   npx supabase link --project-ref chaeznzfvbgrpzvxwvyu
+   npx supabase link --project-ref mzqlkhysicqtrahllkng
    ```
    You'll be prompted for your database password.
 
@@ -69,7 +69,7 @@ Your database needs ALL 117 migrations applied in chronological order. The migra
 ### Best for: When CLI doesn't work due to network/environment issues
 
 1. **Navigate to SQL Editor**:
-   - Go to: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/sql/new
+   - Go to: https://supabase.com/dashboard/project/mzqlkhysicqtrahllkng/sql/new
 
 2. **Run migrations in order**:
    - Start with oldest: `20250106150000_provision_openai_for_company_agents.sql`
@@ -94,9 +94,9 @@ Create a new query for each migration and save them as snippets for future refer
 - Database connection string with password
 
 ### Get your connection string:
-1. Go to: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/settings/database
+1. Go to: https://supabase.com/dashboard/project/mzqlkhysicqtrahllkng/settings/database
 2. Copy the connection string under "Connection string"
-3. Format: `postgresql://postgres:[YOUR-PASSWORD]@db.chaeznzfvbgrpzvxwvyu.supabase.co:5432/postgres`
+3. Format: `postgresql://postgres:[YOUR-PASSWORD]@db.mzqlkhysicqtrahllkng.supabase.co:5432/postgres`
 
 ### Run migrations:
 ```bash
@@ -119,7 +119,7 @@ done
 ## Solution 4: Using Migration Script (If you have service role key)
 
 ### Get Service Role Key:
-1. Go to: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/settings/api
+1. Go to: https://supabase.com/dashboard/project/mzqlkhysicqtrahllkng/settings/api
 2. Copy the `service_role` key (NOT the anon key)
 3. Add to `.env`:
    ```
@@ -140,7 +140,7 @@ node scripts/run-migrations.js
 After running migrations, verify they were applied:
 
 ### Option 1: Check in Supabase Dashboard
-1. Go to Table Editor: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/editor
+1. Go to Table Editor: https://supabase.com/dashboard/project/mzqlkhysicqtrahllkng/editor
 2. Verify tables exist:
    - `companies`
    - `profiles`
@@ -196,13 +196,13 @@ SELECT EXISTS (
 
 ## Project Configuration Note
 
-Your `.env` file shows project ID: `chaeznzfvbgrpzvxwvyu`
-Your `supabase/config.toml` shows: `burikvqttbmhahtjnplq`
+Your `.env` file shows project ID: `mzqlkhysicqtrahllkng`
+Your `supabase/config.toml` shows: `mzqlkhysicqtrahllkng`
 
 **These don't match!** Make sure you're targeting the correct project. Update `config.toml` if needed:
 
 ```toml
-project_id = "chaeznzfvbgrpzvxwvyu"
+project_id = "mzqlkhysicqtrahllkng"
 ```
 
 ---
@@ -229,5 +229,5 @@ If you continue to have issues:
 ---
 
 **Last Updated**: 2025-11-18
-**Project**: chaeznzfvbgrpzvxwvyu
+**Project**: mzqlkhysicqtrahllkng
 **Database**: PostgreSQL 15

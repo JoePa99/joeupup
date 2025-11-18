@@ -1,4 +1,4 @@
-project_id = "chaeznzfvbgrpzvxwvyu"
+project_id = "mzqlkhysicqtrahllkng"
 
 [api]
 enabled = true
@@ -30,7 +30,7 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://burikvqttbmhahtjnplq.supabase.co"]
+additional_redirect_urls = ["https://mzqlkhysicqtrahllkng.supabase.co"]
 
 [functions.create-agent-indexes]
 verify_jwt = true

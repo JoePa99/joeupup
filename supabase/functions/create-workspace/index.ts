@@ -102,14 +102,40 @@ serve(async (req) => {
       );
     }
 
-    const { data: profile, error: profileError } = await supabaseAdmin
+    // Try to get the profile, but don't fail if it doesn't exist
+    const { data: profileData, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('id, company_id, role')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !profile) {
-      throw new Error(profileError?.message || 'Unable to load profile');
+    console.log('Profile lookup result:', { profileData, profileError });
+
+    let profile = profileData;
+
+    // If profile doesn't exist, create it
+    if (!profile) {
+      console.log('Profile not found, creating new profile for user:', user.id);
+      const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email,
+          role: 'user',
+        })
+        .select('id, company_id, role')
+        .single();
+
+      if (createError || !newProfile) {
+        throw new Error(`Failed to create profile: ${createError?.message || 'Unknown error'}`);
+      }
+
+      profile = newProfile;
+      console.log('Created new profile:', profile);
+    }
+
+    if (profileError) {
+      throw new Error(profileError.message);
     }
 
     let companyId = profile.company_id;

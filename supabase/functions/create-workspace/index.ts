@@ -111,6 +111,11 @@ serve(async (req) => {
 
     console.log('Profile lookup result:', { profileData, profileError });
 
+    // Check for actual database errors (not just "no profile found")
+    if (profileError) {
+      throw new Error(`Profile lookup error: ${profileError.message}`);
+    }
+
     let profile = profileData;
 
     // If profile doesn't exist, create it
@@ -132,10 +137,6 @@ serve(async (req) => {
 
       profile = newProfile;
       console.log('Created new profile:', profile);
-    }
-
-    if (profileError) {
-      throw new Error(profileError.message);
     }
 
     let companyId = profile.company_id;

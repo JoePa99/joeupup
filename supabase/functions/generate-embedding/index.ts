@@ -1,4 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { generateQueryEmbedding } from '../_shared/embedding-config.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,53 +10,61 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { text } = await req.json();
 
-    if (!text) {
-      throw new Error('Missing required field: text');
+    if (!text || typeof text !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid text parameter' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    // Call OpenAI Embeddings API
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-      },
-      body: JSON.stringify({
-        model: 'text-embedding-3-large',
-        input: text,
-        dimensions: 1536,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error?.message || 'Failed to generate embedding');
+    // Get OpenAI API key from environment
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      console.error('OPENAI_API_KEY not configured');
+      return new Response(
+        JSON.stringify({ error: 'OpenAI API key not configured' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    const embedding = data.data[0].embedding;
+    // Generate embedding using shared utility
+    console.log(`Generating embedding for text: ${text.substring(0, 100)}...`);
+    const embedding = await generateQueryEmbedding(text, openaiApiKey);
+
+    console.log(`Successfully generated embedding with ${embedding.length} dimensions`);
 
     return new Response(
       JSON.stringify({ embedding }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
-
   } catch (error) {
-    console.error('Error in generate-embedding:', error);
+    console.error('Error in generate-embedding function:', error);
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({
+        error: 'Failed to generate embedding',
+        details: errorMessage
+      }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   }

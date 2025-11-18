@@ -5,90 +5,155 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface RerankRequest {
+  model: string;
+  query: string;
+  documents: string[];
+  top_n?: number;
+  return_documents?: boolean;
+}
+
+interface RerankResult {
+  index: number;
+  relevance_score: number;
+  document?: string;
+}
+
+interface RerankResponse {
+  results: RerankResult[];
+  meta?: {
+    api_version: {
+      version: string;
+    };
+  };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { model, query, documents, top_n, return_documents } = await req.json();
+    const {
+      model = 'rerank-english-v3.0',
+      query,
+      documents,
+      top_n,
+      return_documents = false,
+    }: RerankRequest = await req.json();
 
-    if (!query || !documents || !Array.isArray(documents)) {
-      throw new Error('Missing required fields: query, documents');
-    }
-
-    const cohereApiKey = Deno.env.get('COHERE_API_KEY');
-
-    // If no Cohere API key, return original order
-    if (!cohereApiKey) {
-      console.warn('No COHERE_API_KEY found, returning original document order');
+    // Validation
+    if (!query || typeof query !== 'string') {
       return new Response(
-        JSON.stringify({
-          results: documents.map((doc, index) => ({
-            index,
-            relevance_score: 1.0 - (index * 0.05), // Fake scores
-            document: return_documents ? doc : undefined
-          }))
-        }),
+        JSON.stringify({ error: 'Missing or invalid query parameter' }),
         {
+          status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
         }
       );
+    }
+
+    if (!Array.isArray(documents) || documents.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid documents parameter' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Get Cohere API key from environment
+    const cohereApiKey = Deno.env.get('COHERE_API_KEY');
+    if (!cohereApiKey) {
+      console.error('COHERE_API_KEY not configured');
+      return new Response(
+        JSON.stringify({ error: 'Cohere API key not configured' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    console.log(`Reranking ${documents.length} documents with model: ${model}`);
+    console.log(`Query: ${query.substring(0, 100)}...`);
+    if (top_n) {
+      console.log(`Returning top ${top_n} results`);
     }
 
     // Call Cohere Rerank API
-    const response = await fetch('https://api.cohere.ai/v1/rerank', {
+    const cohereResponse = await fetch('https://api.cohere.ai/v1/rerank', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${cohereApiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify({
-        model: model || 'rerank-english-v3.0',
+        model,
         query,
-        documents: documents.map(doc => typeof doc === 'string' ? doc : doc.text || JSON.stringify(doc)),
-        top_n: top_n || documents.length,
-        return_documents: return_documents !== false,
+        documents,
+        top_n,
+        return_documents,
       }),
     });
 
-    const data = await response.json();
+    if (!cohereResponse.ok) {
+      const errorText = await cohereResponse.text();
+      console.error('Cohere API error:', cohereResponse.status, errorText);
 
-    if (!response.ok) {
-      console.error('Cohere rerank error:', data);
-      // Fallback to original order on error
+      let errorMessage = 'Cohere API error';
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (parseError) {
+        // Use raw error text
+        errorMessage = errorText;
+      }
+
       return new Response(
         JSON.stringify({
-          results: documents.map((doc, index) => ({
-            index,
-            relevance_score: 1.0 - (index * 0.05),
-            document: return_documents ? doc : undefined
-          }))
+          error: 'Failed to rerank documents',
+          details: errorMessage,
+          status: cohereResponse.status,
         }),
         {
+          status: cohereResponse.status,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
         }
       );
     }
 
-    return new Response(
-      JSON.stringify({ results: data.results }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
-    );
+    const result: RerankResponse = await cohereResponse.json();
 
+    console.log(`Successfully reranked documents, returned ${result.results.length} results`);
+
+    // Log top 3 results
+    result.results.slice(0, 3).forEach((r, i) => {
+      console.log(`  ${i + 1}. Index ${r.index}, Score: ${r.relevance_score.toFixed(4)}`);
+    });
+
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error) {
-    console.error('Error in cohere-rerank:', error);
+    console.error('Error in cohere-rerank function:', error);
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({
+        error: 'Failed to rerank documents',
+        details: errorMessage,
+      }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   }

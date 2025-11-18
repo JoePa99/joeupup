@@ -1048,12 +1048,13 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
 
     try {
       console.log('🔍 [DEBUG] Sending agent message with payload:', { message: userMessage, agent_id: agent.id, attachments, client_message_id: clientMessageId });
-      const { data, error } = await supabase.functions.invoke('chat-with-agent', {
+      const { data, error } = await supabase.functions.invoke('chat-with-agent-v2', {
         body: {
           message: userMessage,
           agent_id: agent.id,
           conversation_id: conversation.id,
           user_id: user.id,
+          company_id: userProfile?.company_id,
           attachments,
           client_message_id: clientMessageId
         }
@@ -1071,19 +1072,23 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
           created_at: new Date().toISOString()
         };
         setMessages(prev => [...prev, assistantMessage]);
-        
+
         // Show success toast for Google integration
         toast({
           title: "Google Workspace Integration",
           description: `Successfully executed ${data.actions_executed} Google actions`,
         });
       } else {
-        // Regular OpenAI assistant response
+        // Regular OpenAI assistant response with context metadata
         const assistantMessage: Message = {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: data.message,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          content_metadata: {
+            context_used: data.context_metadata?.context_used,
+            citations: data.context_metadata?.citations || [],
+          }
         };
         setMessages(prev => [...prev, assistantMessage]);
       }

@@ -224,7 +224,7 @@ serve(async (req) => {
       throw new Error(`Failed to update profile: ${profileUpdateError.message}`);
     }
 
-    // Complete onboarding session
+    // Complete onboarding session - only use core columns that exist in all schema versions
     const { error: onboardingError } = await supabaseAdmin
       .from('onboarding_sessions')
       .upsert({
@@ -232,9 +232,6 @@ serve(async (req) => {
         company_id: companyId,
         status: 'completed',
         current_step: 1,
-        progress_percentage: 100,
-        completed_at: new Date().toISOString(),
-        session_data: { workspaceName, onboardingPath: 'single_form' },
       }, { onConflict: 'user_id' });
 
     if (onboardingError) {

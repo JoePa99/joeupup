@@ -115,21 +115,49 @@ serve(async (req) => {
     let companyId = profile.company_id;
 
     if (!companyId) {
+      console.log('Creating new company with name:', workspaceName);
+
+      // Try using the RPC function first
       const { data: companyResult, error: companyError } = await supabaseAdmin
         .rpc('create_company_and_link_profile', {
           p_company_name: workspaceName,
           p_user_id: user.id
         });
 
-      if (companyError) {
-        console.error('create_company_and_link_profile error:', companyError);
-        throw new Error(companyError.message);
-      }
+      console.log('RPC result:', { companyResult, companyError });
 
-      const createdCompany = Array.isArray(companyResult)
-        ? companyResult[0]
-        : companyResult;
-      companyId = createdCompany?.company_id || createdCompany?.id || null;
+      if (companyError) {
+        console.error('RPC failed, trying direct insert:', companyError);
+
+        // Fallback: Create company directly using service role
+        const { data: newCompany, error: insertError } = await supabaseAdmin
+          .from('companies')
+          .insert({ name: workspaceName })
+          .select('id')
+          .single();
+
+        if (insertError || !newCompany) {
+          throw new Error(`Failed to create company: ${insertError?.message || 'Unknown error'}`);
+        }
+
+        companyId = newCompany.id;
+        console.log('Company created via direct insert:', companyId);
+      } else {
+        if (!companyResult) {
+          throw new Error('RPC returned no data');
+        }
+
+        const createdCompany = Array.isArray(companyResult)
+          ? companyResult[0]
+          : companyResult;
+
+        console.log('Created company via RPC:', createdCompany);
+        companyId = createdCompany?.company_id || createdCompany?.id || null;
+
+        if (!companyId) {
+          throw new Error(`Unable to extract company ID from result: ${JSON.stringify(createdCompany)}`);
+        }
+      }
     }
 
     if (!companyId) {

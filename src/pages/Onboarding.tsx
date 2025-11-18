@@ -128,7 +128,8 @@ export default function Onboarding() {
       }
 
       toast.success('Workspace is ready! Redirecting you to the dashboard.');
-      navigate('/client-dashboard');
+      // Reload to refresh auth context and trigger redirect
+      window.location.href = '/client-dashboard';
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to create workspace';
       toast.error(message);

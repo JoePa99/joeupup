@@ -3,7 +3,7 @@
  */
 
 // You'll need to replace these with your actual values
-const SUPABASE_URL = 'https://burikvqttbmhahtjnplq.supabase.co';
+const SUPABASE_URL = 'https://mzqlkhysicqtrahllkng.supabase.co';
 const SUPABASE_SERVICE_KEY = 'your-service-role-key-here'; // Replace with actual key
 
 async function quickBackfill() {

@@ -14,7 +14,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Error: Missing environment variables');
   console.error('Required: VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
   console.error('\nTo get your service role key:');
-  console.error('1. Go to: https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/settings/api');
+  console.error('1. Go to: https://supabase.com/dashboard/project/mzqlkhysicqtrahllkng/settings/api');
   console.error('2. Copy the "service_role" key (NOT the anon key)');
   console.error('3. Add to .env: SUPABASE_SERVICE_ROLE_KEY=your_key_here');
   process.exit(1);
@@ -85,10 +85,10 @@ async function runMigrations() {
   if (failCount > 0) {
     console.log('⚠️  Some migrations failed. Recommended approach:');
     console.log('\n1. Use Supabase CLI:');
-    console.log('   npx supabase link --project-ref chaeznzfvbgrpzvxwvyu');
+    console.log('   npx supabase link --project-ref mzqlkhysicqtrahllkng');
     console.log('   npx supabase db push');
     console.log('\n2. Or use Supabase Dashboard:');
-    console.log('   https://supabase.com/dashboard/project/chaeznzfvbgrpzvxwvyu/sql');
+    console.log('   https://supabase.com/dashboard/project/mzqlkhysicqtrahllkng/sql');
   }
 }
 

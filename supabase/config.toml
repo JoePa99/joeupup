@@ -133,3 +133,6 @@ verify_jwt = true
 
 [functions.ai-provider-service]
 verify_jwt = true
+
+[functions.create-workspace]
+verify_jwt = false

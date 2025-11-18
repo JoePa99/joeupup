@@ -132,17 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', userId)
         .maybeSingle();
 
-      // If no onboarding row exists, check if user was invited
+      // If no onboarding row exists, mark as incomplete
       if (!data && !error) {
-        const { data: invitation } = await supabase
-          .from('team_invitations')
-          .select('id')
-          .eq('accepted_by', userId)
-          .eq('status', 'accepted')
-          .maybeSingle();
-        
-        // If user has accepted an invitation, skip onboarding
-        setIsOnboardingComplete(!!invitation);
+        setIsOnboardingComplete(false);
         return;
       }
       if (error) {
@@ -263,19 +255,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Create initial onboarding session
-        const { error: onboardingError } = await supabase
-          .from('onboarding_sessions')
-          .insert([{
-            user_id: data.user.id,
-            company_id: companyId,
-            status: 'in_progress',
-            current_step: 1,
-          }]);
+        // Wait for profile to exist before creating onboarding session
+        // This prevents foreign key constraint errors from the profile trigger race condition
+        const waitForProfile = async (userId: string, maxAttempts = 5) => {
+          for (let i = 0; i < maxAttempts; i++) {
+            const { data: profileCheck } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('id', userId)
+              .maybeSingle();
 
-        if (onboardingError) {
-          console.error('Error creating onboarding session:', onboardingError);
-          // Don't throw here as this is not critical for signup
+            if (profileCheck) return true;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          return false;
+        };
+
+        const profileExists = await waitForProfile(data.user.id);
+
+        if (profileExists) {
+          const { error: onboardingError } = await supabase
+            .from('onboarding_sessions')
+            .insert([{
+              user_id: data.user.id,
+              company_id: companyId,
+              status: 'in_progress',
+              current_step: 1,
+            }]);
+
+          if (onboardingError) {
+            console.error('Error creating onboarding session:', onboardingError);
+          }
+        } else {
+          console.warn('Profile not created by trigger, onboarding session will be created later');
         }
 
         // Agents are automatically created by database trigger (seed_default_agents_for_company)

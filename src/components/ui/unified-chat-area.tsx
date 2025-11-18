@@ -1048,54 +1048,92 @@ export function UnifiedChatArea({ agentId, channelId }: UnifiedChatAreaProps) {
 
     try {
       console.log('🔍 [DEBUG] Sending agent message with payload:', { message: userMessage, agent_id: agent.id, attachments, client_message_id: clientMessageId });
-      const { data, error } = await supabase.functions.invoke('chat-with-agent-v2', {
-        body: {
+
+      // Get Supabase session for auth
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      // Call edge function with streaming
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/chat-with-agent-v2`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           message: userMessage,
           agent_id: agent.id,
           conversation_id: conversation.id,
           user_id: user.id,
           company_id: userProfile?.company_id,
-          attachments,
-          client_message_id: clientMessageId
-        }
+        }),
       });
 
-      if (error) throw error;
-
-      // Check if this was a Google integration response
-      if (data.requires_google_integration) {
-        // Show Google integration response
-        const assistantMessage: Message = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: data.message,
-          created_at: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-
-        // Show success toast for Google integration
-        toast({
-          title: "Google Workspace Integration",
-          description: `Successfully executed ${data.actions_executed} Google actions`,
-        });
-      } else {
-        // Regular OpenAI assistant response with context metadata
-        const assistantMessage: Message = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: data.message,
-          created_at: new Date().toISOString(),
-          content_metadata: {
-            context_used: data.context_metadata?.context_used,
-            citations: data.context_metadata?.citations || [],
-          }
-        };
-        setMessages(prev => [...prev, assistantMessage]);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
 
-      // Refresh messages to get the saved conversation
+      // Create a placeholder assistant message for streaming
+      const assistantMessageId = `assistant-${Date.now()}`;
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices?.[0]?.delta?.content;
+
+                  if (content) {
+                    accumulatedContent += content;
+
+                    // Update the message in real-time
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === assistantMessageId
+                          ? { ...msg, content: accumulatedContent }
+                          : msg
+                      )
+                    );
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      }
+
+      // Refresh messages to get the saved conversation with context metadata
       await fetchMessages(selectedConversation.id);
-      
+
       // Update conversation list
       await fetchConversations(agent.id);
 

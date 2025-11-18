@@ -142,6 +142,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsOnboardingComplete(false);
         return;
       }
+
+      // If no onboarding row exists, treat as incomplete
+      if (!data) {
+        setIsOnboardingComplete(false);
+        return;
+      }
+
       const isCompleted = data?.status === 'completed' || false;
       console.log('Onboarding status check:', { userId, status: data?.status, isCompleted });
       setIsOnboardingComplete(isCompleted);

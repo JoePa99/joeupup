@@ -153,8 +153,44 @@ export default function AcceptInvitation() {
 
         if (invitationError) throw invitationError;
 
+        // Create or update onboarding session
+        const { data: existingOnboarding } = await supabase
+          .from('onboarding_sessions')
+          .select('id, workspace_ready')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        let workspaceReady = false;
+
+        if (existingOnboarding) {
+          workspaceReady = existingOnboarding.workspace_ready || false;
+        } else {
+          const { data: newOnboarding, error: onboardingError } = await supabase
+            .from('onboarding_sessions')
+            .insert({
+              user_id: user.id,
+              company_id: invitation.company_id,
+              status: 'completed',
+              invited_by_consultant: true,
+              current_step: 4,
+            })
+            .select('workspace_ready')
+            .single();
+
+          if (onboardingError) {
+            console.error('Error creating onboarding session:', onboardingError);
+          }
+
+          workspaceReady = newOnboarding?.workspace_ready || false;
+        }
+
         toast.success("Invitation accepted! Welcome to the team!");
-        navigate('/client-dashboard');
+
+        if (workspaceReady) {
+          navigate('/client-dashboard');
+        } else {
+          navigate('/workspace-pending');
+        }
       } catch (error) {
         console.error('Error accepting invitation:', error);
         toast.error("Failed to accept invitation");
@@ -221,7 +257,7 @@ export default function AcceptInvitation() {
       // Mark invitation as accepted
       const { error: invitationError } = await supabase
         .from('team_invitations')
-        .update({ 
+        .update({
           status: 'accepted',
           accepted_at: new Date().toISOString(),
           accepted_by: authData.user.id
@@ -232,8 +268,33 @@ export default function AcceptInvitation() {
         console.error('Error updating invitation:', invitationError);
       }
 
+      // Create onboarding session with completed status and check workspace_ready
+      const { data: onboardingData, error: onboardingError } = await supabase
+        .from('onboarding_sessions')
+        .insert({
+          user_id: authData.user.id,
+          company_id: invitation.company_id,
+          status: 'completed',
+          invited_by_consultant: true,
+          current_step: 4, // Final step
+        })
+        .select('workspace_ready')
+        .single();
+
+      if (onboardingError) {
+        console.error('Error creating onboarding session:', onboardingError);
+      }
+
       toast.success("Account created! Welcome to the team!");
-      navigate('/client-dashboard');
+
+      // Check if workspace is ready
+      const workspaceReady = onboardingData?.workspace_ready || false;
+
+      if (workspaceReady) {
+        navigate('/client-dashboard');
+      } else {
+        navigate('/workspace-pending');
+      }
     } catch (error) {
       console.error('Error creating account:', error);
       toast.error(error instanceof Error ? error.message : "Failed to create account");

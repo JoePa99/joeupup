@@ -652,9 +652,39 @@ export function Message({
                   {citation.metadata?.section && (
                     <p className="text-xs text-muted-foreground">Section: {citation.metadata.section}</p>
                   )}
+                  {citation.relevanceScore !== undefined && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <span>Relevance:</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {Math.round(citation.relevanceScore * 100)}%
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               );
             })}
+
+            {/* Context Metadata Footer */}
+            {content_metadata?.context_used && citations.length > 0 && (
+              <div className="pt-2 mt-2 border-t border-border/50 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <FileText className="h-3 w-3" />
+                  <span>{citations.length} source{citations.length !== 1 ? 's' : ''} used</span>
+                </div>
+                {(() => {
+                  // Count sources by tier
+                  const tierCounts: Record<string, number> = {};
+                  citations.forEach(c => {
+                    tierCounts[c.tier] = (tierCounts[c.tier] || 0) + 1;
+                  });
+                  return Object.entries(tierCounts).map(([tier, count]) => (
+                    <div key={tier} className="text-[10px]">
+                      {tierLabels[tier] || tier}: {count}
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
           </div>
         )}
 

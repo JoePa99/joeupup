@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, ChevronDown, ChevronRight, Maximize2, Search, AtSign, Copy } from "lucide-react";
@@ -9,11 +9,14 @@ import { ImageGenerationCard } from "./image-generation-card";
 import { WebResearchCard } from "./web-research-card";
 import { DocumentAnalysisCard } from "./document-analysis-card";
 import { DocumentParsingError } from "./document-parsing-error";
+import { FloatingSelectionToolbar } from "./floating-selection-toolbar";
 import { parseMentions } from "@/lib/notifications";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { mdToHtml } from "@/lib/markdown";
+import { useTextSelection } from "@/hooks/use-text-selection";
+import { useToast } from "@/hooks/use-toast";
 
 interface FileAttachment {
   name: string;
@@ -126,7 +129,11 @@ export function Message({
   agent_id
 }: MessageProps) {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const messageRef = useRef<HTMLDivElement>(null);
+  const { selection, clearSelection } = useTextSelection(messageRef);
   const [channelMembersData, setChannelMembersData] = useState<ChannelMember[]>(channelMembers);
+
   const formatTimestamp = (timestamp: string) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
@@ -188,16 +195,16 @@ export function Message({
     if (!content || typeof content !== 'string') {
       return null;
     }
-    
+
     const mentions = parseMentions(content);
-    
+
     // If no mentions, process markdown and return HTML
     if (mentions.length === 0) {
       const htmlContent = mdToHtml(content);
       return (
-        <div 
-          className="markdown-content" 
-          dangerouslySetInnerHTML={{ __html: htmlContent }} 
+        <div
+          className="markdown-content select-text cursor-text"
+          dangerouslySetInnerHTML={{ __html: htmlContent }}
         />
       );
     }
@@ -298,7 +305,7 @@ export function Message({
       );
     }
     
-    return <div className="markdown-content leading-relaxed">{parts}</div>;
+    return <div className="markdown-content leading-relaxed select-text cursor-text">{parts}</div>;
   };
 
   const currentUserMentioned = isCurrentUserMentioned(content);
@@ -315,10 +322,98 @@ export function Message({
     }
   };
 
+  // Pinboard handlers
+  const handlePin = async (selectedText: string) => {
+    if (!user?.id) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in to pin content',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Get user's company_id
+      const { data: companyMember } = await supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .single();
+
+      // Get Quick Pins collection
+      const { data: collection } = await supabase
+        .from('pin_collections')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', 'Quick Pins')
+        .single();
+
+      const { error } = await supabase.from('pins').insert({
+        user_id: user.id,
+        company_id: companyMember?.company_id,
+        collection_id: collection?.id,
+        message_id: id,
+        conversation_id: conversation_id,
+        channel_id: channelId,
+        content: selectedText,
+        content_type: 'text',
+        metadata: {
+          original_message: content.substring(0, 200),
+          timestamp: created_at,
+          sender: senderInfo.name,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Pinned!',
+        description: 'Content saved to Quick Pins',
+      });
+    } catch (error) {
+      console.error('Error pinning content:', error);
+      toast({
+        title: 'Pin failed',
+        description: 'Failed to save pin',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleAskFollowup = (selectedText: string) => {
+    // This would integrate with the chat input to pre-fill a follow-up question
+    // For now, we'll just show a toast
+    toast({
+      title: 'Follow-up',
+      description: 'This feature will allow you to ask about the selected text',
+    });
+  };
+
+  const handleEdit = (selectedText: string) => {
+    // This would open the artifact editor with the selected text
+    toast({
+      title: 'Edit in artifact',
+      description: 'This feature will open the artifact editor',
+    });
+  };
+
   return (
-    <div className={`group space-y-2 w-full min-w-0 break-words ${
-      currentUserMentioned ? 'ring-2 ring-blue-200 bg-blue-50/30 rounded-lg p-2' : ''
-    }`}>
+    <>
+      <FloatingSelectionToolbar
+        selectedText={selection.text}
+        rect={selection.rect}
+        onPin={handlePin}
+        onAskFollowup={handleAskFollowup}
+        onEdit={handleEdit}
+        onClose={clearSelection}
+      />
+      <div
+        ref={messageRef}
+        className={`group space-y-2 w-full min-w-0 break-words ${
+          currentUserMentioned ? 'ring-2 ring-blue-200 bg-blue-50/30 rounded-lg p-2' : ''
+        }`}
+      >
       {/* Message Header */}
       <div className="flex items-center space-x-2 text-sm min-w-0">
         <span className="font-semibold text-foreground">{senderInfo.name}</span>
@@ -572,7 +667,7 @@ export function Message({
 
             {/* Mixed content or fallback text content */}
             {(content_type === 'mixed' || content_type === 'text' || (!tool_results.results?.success && content_type !== 'web_research' && content_type !== 'document_analysis')) && content && (
-              <div className="text-sm text-foreground prose prose-sm max-w-none min-w-0 break-words">
+              <div className="text-sm text-foreground prose prose-sm max-w-none min-w-0 break-words select-text cursor-text">
                 {renderParsedContent(content)}
               </div>
             )}
@@ -602,7 +697,7 @@ export function Message({
 
         {/* Regular message content */}
         {!rich_content && !is_generating && !tool_results && (
-          <div className="text-sm text-foreground prose prose-sm max-w-none min-w-0 break-words">
+          <div className="text-sm text-foreground prose prose-sm max-w-none min-w-0 break-words select-text cursor-text">
             {renderParsedContent(content || '')}
           </div>
         )}
@@ -617,7 +712,7 @@ export function Message({
             </div>
 
             {contextSummary && (
-              <p className="text-sm text-foreground/80 leading-relaxed">
+              <p className="text-sm text-foreground/80 leading-relaxed select-text cursor-text">
                 {contextSummary}
               </p>
             )}
@@ -646,7 +741,7 @@ export function Message({
                       </a>
                     )}
                   </div>
-                  <p className="text-sm text-foreground leading-relaxed break-words">
+                  <p className="text-sm text-foreground leading-relaxed break-words select-text cursor-text">
                     {citation.content}
                   </p>
                   {citation.metadata?.section && (
@@ -744,5 +839,6 @@ export function Message({
         )}
       </div>
     </div>
+    </>
   );
 }

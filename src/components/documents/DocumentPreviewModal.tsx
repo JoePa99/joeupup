@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Download, ExternalLink, FileText, AlertCircle } from 'lucide-react';
+import { Loader2, Download, ExternalLink, FileText, AlertCircle, Copy } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Document {
@@ -179,6 +179,25 @@ export function DocumentPreviewModal({ document, open, onOpenChange }: DocumentP
     }
   };
 
+  const handleCopyText = async () => {
+    if (textContent) {
+      try {
+        await navigator.clipboard.writeText(textContent);
+        toast({
+          title: "Copied to clipboard",
+          description: "Text content has been copied to clipboard",
+        });
+      } catch (error) {
+        console.error('Error copying text:', error);
+        toast({
+          title: "Copy failed",
+          description: "Failed to copy text to clipboard",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
   const renderPreview = () => {
     if (loading) {
       return (
@@ -210,7 +229,7 @@ export function DocumentPreviewModal({ document, open, onOpenChange }: DocumentP
     if (textContent !== null) {
       return (
         <div className="h-[600px] overflow-auto">
-          <pre className="p-4 bg-muted rounded-lg text-sm font-mono whitespace-pre-wrap break-words">
+          <pre className="p-4 bg-muted rounded-lg text-sm font-mono whitespace-pre-wrap break-words select-text cursor-text">
             {textContent}
           </pre>
         </div>
@@ -338,6 +357,16 @@ export function DocumentPreviewModal({ document, open, onOpenChange }: DocumentP
               </DialogDescription>
             </div>
             <div className="flex gap-2 flex-shrink-0">
+              {textContent !== null && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyText}
+                  title="Copy text content"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              )}
               {documentUrl && !TEXT_TYPES.includes(document.file_type) && (
                 <Button
                   variant="outline"

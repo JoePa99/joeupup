@@ -57,7 +57,8 @@ export function FloatingSelectionToolbar({
       style={style}
       className="flex items-center gap-1 bg-white border-2 border-primary rounded-lg shadow-2xl p-1"
       onMouseDown={(e) => {
-        // Prevent the toolbar from being dismissed when clicking on it
+        // Prevent losing the current text selection while interacting with the toolbar
+        e.preventDefault();
         e.stopPropagation();
       }}
     >

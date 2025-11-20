@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { Pin, MessageSquare, Copy, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -29,9 +30,9 @@ export function FloatingSelectionToolbar({
   const style: React.CSSProperties = {
     position: 'fixed',
     left: `${rect.left + rect.width / 2}px`,
-    top: `${rect.top - 50}px`,
+    top: `${rect.top - 60}px`,
     transform: 'translateX(-50%)',
-    zIndex: 1000,
+    zIndex: 9999,
   };
 
   const handleCopy = async () => {
@@ -51,10 +52,14 @@ export function FloatingSelectionToolbar({
     }
   };
 
-  return (
+  return createPortal(
     <div
       style={style}
-      className="flex items-center gap-1 bg-background border border-border rounded-lg shadow-lg p-1 animate-in fade-in slide-in-from-top-2 duration-200"
+      className="flex items-center gap-1 bg-white border-2 border-primary rounded-lg shadow-2xl p-1"
+      onMouseDown={(e) => {
+        // Prevent the toolbar from being dismissed when clicking on it
+        e.stopPropagation();
+      }}
     >
       <Button
         size="sm"
@@ -108,6 +113,7 @@ export function FloatingSelectionToolbar({
         <Edit className="h-4 w-4 mr-1" />
         Edit
       </Button>
-    </div>
+    </div>,
+    document.body
   );
 }

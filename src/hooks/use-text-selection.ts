@@ -14,40 +14,47 @@ export function useTextSelection(containerRef?: React.RefObject<HTMLElement>) {
   });
 
   const handleSelectionChange = useCallback(() => {
-    const windowSelection = window.getSelection();
+    // Small delay to ensure selection is complete
+    setTimeout(() => {
+      const windowSelection = window.getSelection();
 
-    if (!windowSelection || windowSelection.rangeCount === 0) {
-      setSelection({ text: '', range: null, rect: null });
-      return;
-    }
-
-    const selectedText = windowSelection.toString().trim();
-
-    // If there's no selected text, clear selection
-    if (!selectedText) {
-      setSelection({ text: '', range: null, rect: null });
-      return;
-    }
-
-    // If containerRef is provided, check if selection is within container
-    if (containerRef?.current) {
-      const range = windowSelection.getRangeAt(0);
-      const isWithinContainer = containerRef.current.contains(range.commonAncestorContainer);
-
-      if (!isWithinContainer) {
+      if (!windowSelection || windowSelection.rangeCount === 0) {
         setSelection({ text: '', range: null, rect: null });
         return;
       }
-    }
 
-    const range = windowSelection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
+      const selectedText = windowSelection.toString().trim();
 
-    setSelection({
-      text: selectedText,
-      range,
-      rect,
-    });
+      // If there's no selected text, clear selection
+      if (!selectedText) {
+        setSelection({ text: '', range: null, rect: null });
+        return;
+      }
+
+      // If containerRef is provided, check if selection is within container
+      if (containerRef?.current) {
+        const range = windowSelection.getRangeAt(0);
+        const isWithinContainer = containerRef.current.contains(range.commonAncestorContainer);
+
+        if (!isWithinContainer) {
+          setSelection({ text: '', range: null, rect: null });
+          return;
+        }
+      }
+
+      const range = windowSelection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+
+      // Only set selection if we have a valid rect
+      if (rect && rect.width > 0 && rect.height > 0) {
+        console.log('Selection detected:', { text: selectedText.substring(0, 50), rect });
+        setSelection({
+          text: selectedText,
+          range,
+          rect,
+        });
+      }
+    }, 50);
   }, [containerRef]);
 
   useEffect(() => {
